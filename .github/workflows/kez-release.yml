@@ -1,12 +1,16 @@
 name: kez release
 
-# Lean release pipeline for kez: cross-compiles cmd/kez for linux/macos
-# (x64/arm64) from a single runner, tarballs each with a SHA-256 checksum, and
-# publishes them to the GitHub Release for the pushed tag. scripts/install.sh
-# and `kez update` download these assets by name (kez-v<version>-<os>-<arch>).
+# Lean release pipeline for kez: cross-compiles cmd/kez for linux/macos/windows
+# (x64/arm64) from a single runner, archives each with a SHA-256 checksum, and
+# publishes them to a GitHub Release. scripts/install.sh and `kez update`
+# download these assets by name (kez-v<version>-<os>-<arch>).
 #
-# Trigger: push a semver tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`),
-# or run manually from the Actions tab against an existing tag.
+# Two ways to cut a release:
+#   1. Manual (recommended): Actions tab -> "kez release" -> Run workflow ->
+#      pick a bump (patch/minor/major). The next version is computed from the
+#      latest release automatically, the tag is created, and binaries publish.
+#      No local tagging needed.
+#   2. Push a semver tag yourself: `git tag v1.2.3 && git push origin v1.2.3`.
 
 on:
   push:
@@ -14,25 +18,53 @@ on:
       - "v*"
   workflow_dispatch:
     inputs:
-      tag:
-        description: "Existing tag to (re)build and release, e.g. v0.1.0"
-        required: true
+      bump:
+        description: "Version bump (computed from the latest release)"
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
 
 permissions:
-  contents: write # create releases and upload assets
+  contents: write # create tags + releases and upload assets
+
+# Serialize releases so two concurrent runs can't compute the same next version.
+concurrency:
+  group: kez-release
+  cancel-in-progress: false
 
 jobs:
   release:
     name: Build and publish kez binaries
     runs-on: ubuntu-latest
     steps:
-      - name: Resolve tag
+      - name: Resolve version
         id: tag
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            tag="${{ github.event.inputs.tag }}"
-          else
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "push" ]; then
+            # Triggered by a pushed tag: use it verbatim.
             tag="${GITHUB_REF#refs/tags/}"
+          else
+            # Manual run: compute the next version from the latest release.
+            bump="${{ github.event.inputs.bump }}"
+            latest="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
+            [ -n "$latest" ] || latest="v0.0.0"
+            ver="${latest#v}"
+            IFS='.' read -r major minor patch <<<"$ver"
+            major="${major:-0}"; minor="${minor:-0}"; patch="${patch:-0}"
+            case "$bump" in
+              major) major=$((major + 1)); minor=0; patch=0 ;;
+              minor) minor=$((minor + 1)); patch=0 ;;
+              patch|"") patch=$((patch + 1)) ;;
+              *) echo "unknown bump '$bump'" >&2; exit 1 ;;
+            esac
+            tag="v${major}.${minor}.${patch}"
+            echo "next version: ${latest} -> ${tag} (${bump})"
           fi
           case "$tag" in
             v*) : ;;
@@ -43,8 +75,6 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: ${{ steps.tag.outputs.tag }}
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -95,10 +125,13 @@ jobs:
           TAG: ${{ steps.tag.outputs.tag }}
         run: |
           set -euo pipefail
-          # Create the release if it does not exist yet (idempotent re-runs just
-          # upload/clobber assets onto the existing release).
+          # Create the release if it does not exist yet. --target creates the tag
+          # at this commit when it doesn't exist (the manual-bump path); it is
+          # ignored when the tag already exists (the pushed-tag path). Idempotent
+          # re-runs just re-upload assets onto the existing release.
           if ! gh release view "$TAG" >/dev/null 2>&1; then
             gh release create "$TAG" \
+              --target "$GITHUB_SHA" \
               --title "kez $TAG" \
               --generate-notes
           fi
