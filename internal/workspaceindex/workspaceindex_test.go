@@ -149,12 +149,12 @@ func TestHelpersClassifySharedWorkspaceRules(t *testing.T) {
 		}
 	}
 	for path, want := range map[string]string{
-		"main.go":          "Go",
-		"src/app.tsx":      "TypeScript",
-		"src/app.jsx":      "JavaScript",
-		"README.md":        "Markdown",
-		"config.yaml":      "YAML",
-		"Cargo.toml":       "TOML",
+		"main.go":         "Go",
+		"src/app.tsx":     "TypeScript",
+		"src/app.jsx":     "JavaScript",
+		"README.md":       "Markdown",
+		"config.yaml":     "YAML",
+		"Cargo.toml":      "TOML",
 		"unknown.kezlang": "",
 	} {
 		if got := LanguageForPath(path); got != want {

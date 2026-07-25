@@ -11,7 +11,7 @@ func TestScanDetectsHighConfidenceSecrets(t *testing.T) {
 		"github_token":      "ghp_1234567890abcdefghijklmnopqrstuvwxyz",
 		// Split literal so GitHub push protection doesn't flag this fake test
 		// token; the runtime value is unchanged, so Scan still detects it.
-		"slack_token": "xox" + "b-1234567890-abcdefghijklmno",
+		"slack_token":       "xox" + "b-1234567890-abcdefghijklmno",
 		"google_api_key":    "AIzaSyA1234567890abcdefghijklmnopqrstuv",
 		"private_key_block": "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAB\n-----END OPENSSH PRIVATE KEY-----",
 	}

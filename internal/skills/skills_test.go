@@ -369,7 +369,7 @@ func TestAgentsDirIgnoresZeroSkillsDir(t *testing.T) {
 	}
 	// KEZ_SKILLS_DIR must not redirect or suppress AgentsDir.
 	got := AgentsDir(map[string]string{
-		"HOME":            home,
+		"HOME":           home,
 		"KEZ_SKILLS_DIR": filepath.Join(home, "zero-only"),
 	})
 	if got != agents {
@@ -393,7 +393,7 @@ func TestDiscoveryRootsOrderAndOmission(t *testing.T) {
 	}
 	primary := filepath.Join(home, "zero-skills")
 	env := map[string]string{
-		"HOME":            home,
+		"HOME":           home,
 		"KEZ_SKILLS_DIR": primary,
 	}
 	roots := DiscoveryRoots(env, []string{"", " /plugin/a ", "plugin/b"})
@@ -412,7 +412,7 @@ func TestDiscoveryRootsOmitsMissingAgents(t *testing.T) {
 	home := t.TempDir()
 	primary := filepath.Join(home, "zero-skills")
 	env := map[string]string{
-		"HOME":            home,
+		"HOME":           home,
 		"KEZ_SKILLS_DIR": primary,
 	}
 	roots := DiscoveryRoots(env, nil)

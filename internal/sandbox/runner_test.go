@@ -708,9 +708,9 @@ func TestScrubSensitiveEnv(t *testing.T) {
 	}
 	scrubbed := scrubSensitiveEnv(inputEnv, " COMPANY_LLM_SECRET ", "company_llm_secret", "GITHUB_TOKEN=ghp_pasted-assignment", "=", "")
 	expected := map[string]string{
-		"PATH":                     "/usr/bin",
-		"SAFE_VAR":                 "hello",
-		"AWS_PROFILE":              "staging",
+		"PATH":                    "/usr/bin",
+		"SAFE_VAR":                "hello",
+		"AWS_PROFILE":             "staging",
 		"KEZ_OAUTH_CLIENT_SECRET": "not-a-provider-secret",
 	}
 	actual := make(map[string]string, len(scrubbed))

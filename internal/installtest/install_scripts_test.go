@@ -22,17 +22,17 @@ func TestUnixInstallerScriptMatchesReleaseContracts(t *testing.T) {
 	}
 	containsAll(t, script, []string{
 		"set -euo pipefail",
-		`KEZ_REPO="${KEZ_REPO:-Gitlawb/zero}"`,
+		`KEZ_REPO="${KEZ_REPO:-abelcondev/kez}"`,
 		`KEZ_INSTALL_DIR="${KEZ_INSTALL_DIR:-$HOME/.local/bin}"`,
-		`archive_name="zero-v${version}-${platform}-${arch}.tar.gz"`,
+		`archive_name="kez-v${version}-${platform}-${arch}.tar.gz"`,
 		`checksum_name="${archive_name}.sha256"`,
 		"curl --fail --location --show-error --silent --header 'Accept: application/vnd.github+json'",
 		`verify_checksum "$checksum_name"`,
 		`tar -xzf "$archive_path" -C "$extract_dir"`,
 		`find_extracted_binary "$extract_dir"`,
-		`cp "$binary_path" "$KEZ_INSTALL_DIR/zero"`,
-		`copy_optional_file "zero-linux-sandbox"`,
-		`copy_optional_file "zero-seccomp"`,
+		`cp "$binary_path" "$KEZ_INSTALL_DIR/kez"`,
+		`copy_optional_file "kez-linux-sandbox"`,
+		`copy_optional_file "kez-seccomp"`,
 		`copy_optional_dir "helpers"`,
 	})
 }
@@ -42,14 +42,13 @@ func TestPowerShellInstallerScriptMatchesWindowsReleaseContracts(t *testing.T) {
 
 	containsAll(t, script, []string{
 		`[string]$Repository = $(if ($env:KEZ_REPO)`,
-		`Join-Path $env:LOCALAPPDATA "zero\bin"`,
-		`$archiveName = "zero-v$releaseVersion-windows-$arch.zip"`,
+		`Join-Path $env:LOCALAPPDATA "kez\bin"`,
+		`$archiveName = "kez-v$releaseVersion-windows-$arch.zip"`,
 		`$checksumName = "$archiveName.sha256"`,
 		`Get-FileHash -Path $archivePath -Algorithm SHA256`,
 		`Expand-Archive -Path $archivePath -DestinationPath $extractDir -Force`,
 		`Find-ZeroExtractedFile -Root $extractDir -FileName $fileName`,
-		`"zero-windows-command-runner.exe"`,
-		`"zero-windows-sandbox-setup.exe"`,
+		`"kez.exe"`,
 		`Copy-Item -Path $sourcePath -Destination (Join-Path $InstallDir $fileName) -Force`,
 		`Find-ZeroOptionalExtractedDirectory -Root $extractDir -DirectoryName "helpers"`,
 		`Copy-Item -Path $helpersPath -Destination $targetHelpersPath -Recurse -Force`,
@@ -65,18 +64,18 @@ func TestUnixInstallerInstallsFromPrefixedReleaseArchiveWithoutNetwork(t *testin
 	if got := strings.TrimSpace(stderr); got != "" {
 		t.Fatalf("install.sh stderr = %q, want empty", got)
 	}
-	if !strings.Contains(stdout, "Installed "+filepath.Join(fixture.installDir, "zero")) {
+	if !strings.Contains(stdout, "Installed "+filepath.Join(fixture.installDir, "kez")) {
 		t.Fatalf("install.sh stdout missing install path:\n%s", stdout)
 	}
 
-	installed := readFile(t, filepath.Join(fixture.installDir, "zero"))
-	if !strings.Contains(string(installed), "mock-zero") {
-		t.Fatalf("installed binary = %q, want mock-zero script", string(installed))
+	installed := readFile(t, filepath.Join(fixture.installDir, "kez"))
+	if !strings.Contains(string(installed), "mock-kez") {
+		t.Fatalf("installed binary = %q, want mock-kez script", string(installed))
 	}
 	if _, err := os.Stat(filepath.Join(fixture.installDir, "helpers", "node_modules", ".bin", "agent-browser")); err != nil {
 		t.Fatalf("installed helper package missing: %v", err)
 	}
-	if _, err := os.Stat(filepath.Join(fixture.installDir, "zero-linux-sandbox")); err != nil {
+	if _, err := os.Stat(filepath.Join(fixture.installDir, "kez-linux-sandbox")); err != nil {
 		t.Fatalf("installed linux sandbox helper missing: %v", err)
 	}
 }
@@ -96,7 +95,7 @@ func TestUnixInstallerRejectsChecksumMismatchWithoutNetwork(t *testing.T) {
 	if !strings.Contains(output, "FAILED") || !strings.Contains(strings.ToLower(output), "checksum") {
 		t.Fatalf("checksum failure output missing checksum mismatch detail:\n%s", output)
 	}
-	if _, err := os.Stat(filepath.Join(fixture.installDir, "zero")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(fixture.installDir, "kez")); !os.IsNotExist(err) {
 		t.Fatalf("installed binary exists after checksum failure: %v", err)
 	}
 }
@@ -120,7 +119,7 @@ func newUnixInstallFixture(t *testing.T) unixInstallFixture {
 
 	releasePlatform := unixReleasePlatform(t)
 	releaseArch := unixReleaseArch(t)
-	packageName := fmt.Sprintf("zero-v0.1.0-%s-%s", releasePlatform, releaseArch)
+	packageName := fmt.Sprintf("kez-v0.1.0-%s-%s", releasePlatform, releaseArch)
 	archiveName := packageName + ".tar.gz"
 	checksumName := archiveName + ".sha256"
 	root := t.TempDir()
@@ -139,9 +138,9 @@ func newUnixInstallFixture(t *testing.T) unixInstallFixture {
 	mustMkdirAll(t, filepath.Dir(fixture.archivePath))
 	mustMkdirAll(t, fixture.installDir)
 	mustMkdirAll(t, filepath.Join(packageDir, "helpers", "node_modules", ".bin"))
-	writeFile(t, filepath.Join(packageDir, "zero"), []byte("#!/usr/bin/env sh\necho mock-zero\n"), 0o755)
-	writeFile(t, filepath.Join(packageDir, "zero-linux-sandbox"), []byte("#!/usr/bin/env sh\n"), 0o755)
-	writeFile(t, filepath.Join(packageDir, "zero-seccomp"), []byte("#!/usr/bin/env sh\n"), 0o755)
+	writeFile(t, filepath.Join(packageDir, "kez"), []byte("#!/usr/bin/env sh\necho mock-kez\n"), 0o755)
+	writeFile(t, filepath.Join(packageDir, "kez-linux-sandbox"), []byte("#!/usr/bin/env sh\n"), 0o755)
+	writeFile(t, filepath.Join(packageDir, "kez-seccomp"), []byte("#!/usr/bin/env sh\n"), 0o755)
 	mustMkdirAll(t, filepath.Join(packageDir, "helpers", "node_modules", "agent-browser", "bin"))
 	writeFile(t, filepath.Join(packageDir, "helpers", "node_modules", "agent-browser", "bin", "agent-browser.js"), []byte("#!/usr/bin/env node\n"), 0o755)
 	if err := os.Symlink("../agent-browser/bin/agent-browser.js", filepath.Join(packageDir, "helpers", "node_modules", ".bin", "agent-browser")); err != nil {
@@ -220,7 +219,7 @@ func runUnixInstaller(t *testing.T, fixture unixInstallFixture) (string, string,
 	command.Env = append(os.Environ(),
 		"PATH="+fixture.mockBin+string(os.PathListSeparator)+os.Getenv("PATH"),
 		"KEZ_GITHUB_BASE_URL=https://example.test",
-		"KEZ_REPO=Gitlawb/zero",
+		"KEZ_REPO=abelcondev/kez",
 	)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
