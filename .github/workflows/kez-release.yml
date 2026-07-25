@@ -1,0 +1,105 @@
+name: kez release
+
+# Lean release pipeline for kez: cross-compiles cmd/kez for linux/macos
+# (x64/arm64) from a single runner, tarballs each with a SHA-256 checksum, and
+# publishes them to the GitHub Release for the pushed tag. scripts/install.sh
+# and `kez update` download these assets by name (kez-v<version>-<os>-<arch>).
+#
+# Trigger: push a semver tag (e.g. `git tag v0.1.0 && git push origin v0.1.0`),
+# or run manually from the Actions tab against an existing tag.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build and release, e.g. v0.1.0"
+        required: true
+
+permissions:
+  contents: write # create releases and upload assets
+
+jobs:
+  release:
+    name: Build and publish kez binaries
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            tag="${{ github.event.inputs.tag }}"
+          else
+            tag="${GITHUB_REF#refs/tags/}"
+          fi
+          case "$tag" in
+            v*) : ;;
+            *) echo "tag must start with 'v' (got '$tag')" >&2; exit 1 ;;
+          esac
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >>"$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.tag.outputs.tag }}
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build, archive, and checksum every target
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          # target rows: "<GOOS> <GOARCH> <install-name-os> <install-name-arch>"
+          # os/arch names MUST match scripts/install.sh / install.ps1
+          # (linux|macos|windows, x64|arm64). Unix targets ship a .tar.gz with a
+          # `kez` binary; windows ships a .zip with `kez.exe`.
+          printf '%s\n' \
+            "linux amd64 linux x64" \
+            "linux arm64 linux arm64" \
+            "darwin amd64 macos x64" \
+            "darwin arm64 macos arm64" \
+            "windows amd64 windows x64" \
+            "windows arm64 windows arm64" \
+          | while read -r goos goarch os arch; do
+              stage="dist/stage-${os}-${arch}"
+              mkdir -p "$stage"
+              bin="kez"
+              [ "$goos" = "windows" ] && bin="kez.exe"
+              echo "building ${goos}/${goarch} -> ${os}-${arch}"
+              GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "-s -w" -o "$stage/$bin" ./cmd/kez
+              if [ "$goos" = "windows" ]; then
+                archive="kez-v${VERSION}-${os}-${arch}.zip"
+                ( cd "$stage" && zip -q "../${archive}" "$bin" )
+              else
+                archive="kez-v${VERSION}-${os}-${arch}.tar.gz"
+                tar -czf "dist/${archive}" -C "$stage" "$bin"
+              fi
+              ( cd dist && sha256sum "$archive" >"${archive}.sha256" )
+            done
+          echo "--- dist ---"
+          ls -la dist
+
+      - name: Publish to GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Create the release if it does not exist yet (idempotent re-runs just
+          # upload/clobber assets onto the existing release).
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --title "kez $TAG" \
+              --generate-notes
+          fi
+          gh release upload "$TAG" dist/kez-v* --clobber

@@ -1,0 +1,138 @@
+name: PR Auto Review
+
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+
+jobs:
+  review:
+    name: Zero Review
+    if: ${{ !github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Diff hygiene
+        id: diffcheck
+        continue-on-error: true
+        run: git diff --check origin/${{ github.base_ref }}...HEAD
+
+      - name: Test
+        id: test
+        continue-on-error: true
+        run: go test ./...
+
+      - name: Build
+        id: build
+        continue-on-error: true
+        run: go run ./cmd/zero-release build
+
+      - name: Smoke build
+        id: smoke
+        continue-on-error: true
+        run: go run ./cmd/zero-release smoke
+
+      - name: Collect changed files
+        id: changed-files
+        if: always()
+        shell: bash
+        run: |
+          {
+            echo 'files<<EOF'
+            git diff --name-only "origin/${{ github.base_ref }}...HEAD" | sort
+            echo EOF
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Build review summary
+        id: review-summary
+        if: always()
+        shell: bash
+        env:
+          ZERO_PR_NUMBER: ${{ github.event.pull_request.number }}
+          ZERO_REVIEW_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          ZERO_REVIEW_DIFF_CHECK: ${{ steps.diffcheck.outcome }}
+          ZERO_REVIEW_TEST: ${{ steps.test.outcome }}
+          ZERO_REVIEW_BUILD: ${{ steps.build.outcome }}
+          ZERO_REVIEW_SMOKE: ${{ steps.smoke.outcome }}
+          ZERO_CHANGED_FILES: ${{ steps.changed-files.outputs.files }}
+        run: |
+          go run ./cmd/zero-pr-review > "$RUNNER_TEMP/zero-review.md"
+          echo "path=$RUNNER_TEMP/zero-review.md" >> "$GITHUB_OUTPUT"
+
+      - name: Post review summary
+        if: always()
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          ZERO_REVIEW_BODY_PATH: ${{ steps.review-summary.outputs.path }}
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const marker = '<!-- zero-auto-review -->';
+            let body;
+            try {
+              body = fs.readFileSync(process.env.ZERO_REVIEW_BODY_PATH, 'utf8');
+            } catch (error) {
+              core.warning(`Unable to read generated review summary: ${error.message}`);
+              body = [
+                marker,
+                '## Zero automated PR review',
+                '',
+                'Verdict: **Changes requested**',
+                '',
+                '### Blockers',
+                '',
+                '- Review summary generation failed.',
+              ].join('\n');
+            }
+
+            try {
+              const comments = await github.paginate(github.rest.issues.listComments, {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                per_page: 100,
+              });
+              const existing = comments.find((comment) => comment.body?.includes(marker));
+              if (existing) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body,
+                });
+              } else {
+                await github.rest.issues.createComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: context.issue.number,
+                  body,
+                });
+              }
+            } catch (error) {
+              core.warning(`Unable to post automated review comment: ${error.message}`);
+              await core.summary.addRaw(body, true).write();
+            }
+
+      - name: Fail on review blockers
+        if: ${{ steps.diffcheck.outcome != 'success' || steps.test.outcome != 'success' || steps.build.outcome != 'success' || steps.smoke.outcome != 'success' }}
+        run: exit 1

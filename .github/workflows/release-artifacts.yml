@@ -1,0 +1,242 @@
+name: Release Artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to package. Defaults to the workflow branch.
+        required: false
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  package:
+    name: Package (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write # create/upload the GitHub Release on a tag push
+    strategy:
+      fail-fast: false
+      matrix:
+        # `zero-release package` builds + smoke-tests natively (host==target), so each
+        # target platform needs its own native runner. These five cover the platforms
+        # install.sh / install.ps1 / the npm wrapper resolve.
+        os:
+          - ubuntu-latest      # linux-x64
+          - ubuntu-24.04-arm   # linux-arm64
+          - macos-latest       # macos-arm64 (Apple Silicon)
+          - macos-15-intel     # macos-x64 (Intel)
+          - windows-latest     # windows-x64
+
+    steps:
+      - name: Checkout
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.ref == '' }}
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Checkout requested ref
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.ref != '' }}
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Setup Go
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Test
+        run: go test ./...
+
+      # zero-release names assets zero-v<package.json version>-… while the release
+      # is published under the pushed git tag. If they disagree, install.sh/install.ps1
+      # and the npm postinstall all build a download URL that 404s. Fail fast so a
+      # forgotten version bump can never publish mis-versioned, un-installable assets.
+      # Matches on the ref (not event_name) because release-please dispatches this
+      # workflow at the tag ref — its GITHUB_TOKEN-created tag cannot fire `push`.
+      - name: Check tag matches package.json version
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        run: |
+          pkg_version="$(node -p "require('./package.json').version")"
+          if [ "v$pkg_version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match package.json version v$pkg_version — bump package.json before tagging so the release assets and the npm package agree." >&2
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME matches package.json version v$pkg_version."
+
+      - name: Package release artifact
+        run: go run ./cmd/zero-release package
+
+      - name: Verify release checksums
+        run: go run ./cmd/zero-release verify
+
+      - name: Upload package
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: zero-${{ runner.os }}-${{ runner.arch }}
+          path: dist/release/*
+          if-no-files-found: error
+
+      # On a `v*` tag ref (pushed manually, or dispatched at the tag by the
+      # release-please workflow), publish the packaged archive + .sha256 as GitHub
+      # Release assets so the documented `scripts/install.sh` / `install.ps1` path
+      # (which reads /releases/latest) works. Uses the preinstalled `gh` (no new
+      # action dependency); each matrix OS creates the release if absent
+      # (best-effort — release-please normally creates it first) then uploads its
+      # own assets with --clobber. Tags come from merging the release-please PR.
+      - name: Publish to GitHub Release
+        if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          gh release create "$tag" --repo "$GITHUB_REPOSITORY" --title "$tag" --generate-notes 2>/dev/null || true
+          gh release upload "$tag" dist/release/* --repo "$GITHUB_REPOSITORY" --clobber
+
+  # Publishes @gitlawb/zero to npm: first the five platform payloads (versions
+  # of the SAME package at suffixed versions like X.Y.Z-linux-x64, carrying the
+  # native binary + vendored helpers), then the wrapper at X.Y.Z whose
+  # optionalDependencies alias those platform versions. Platform versions MUST
+  # publish first — the wrapper pins them exactly, so the reverse order would
+  # open a window where installs resolve aliases that 404. See
+  # docs/NPM_PACKAGING.md for the full contract.
+  #
+  # Auth is npm OIDC trusted publishing: no NPM_TOKEN secret. The package's
+  # npmjs.com settings must list this repo + workflow file as a trusted
+  # publisher, and provenance is then generated automatically. Note npm only
+  # allows configuring a trusted publisher on an EXISTING package, so the very
+  # first @gitlawb/zero publish is a one-time manual `npm publish` bootstrap.
+  # Because the platform payloads are versions of the same package, they reuse
+  # that single trusted-publisher configuration.
+  publish-npm:
+    name: Publish npm package
+    needs: package
+    if: ${{ startsWith(github.ref, 'refs/tags/v') }}
+    runs-on: ubuntu-latest
+    # Manual approval gate: this environment carries a required-reviewer rule
+    # (Settings -> Environments -> npm-publish), so the job pauses until a
+    # maintainer approves it in the Actions UI before anything reaches npm.
+    environment:
+      name: npm-publish
+      url: https://www.npmjs.com/package/@gitlawb/zero
+    permissions:
+      contents: read
+      id-token: write # OIDC token exchange for npm trusted publishing + provenance
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      # No registry-url here on purpose: setup-node's registry-url writes an
+      # .npmrc line referencing $NODE_AUTH_TOKEN, and npm hard-fails on the
+      # unset env var. Trusted publishing needs no token at all.
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+
+      # OIDC trusted publishing needs npm >= 11.5.1. Use the npm bundled with
+      # the pinned Node toolchain (Node 24 ships >= 11.5.1) rather than pulling
+      # npm@latest from the registry inside the publish path — an unpinned
+      # install there would be avoidable supply-chain exposure. Fail fast if a
+      # future runner/toolchain change ever regresses the bundled npm.
+      - name: Check npm supports trusted publishing
+        run: |
+          npm --version | node -e '
+            const version = require("fs").readFileSync(0, "utf8").trim();
+            const [major, minor, patch] = version.split(".").map(Number);
+            const ok =
+              major > 11 ||
+              (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+            if (!ok) {
+              console.error(
+                `::error::bundled npm ${version} is too old for OIDC trusted ` +
+                  `publishing (needs >= 11.5.1) — bump node-version in this job.`,
+              );
+              process.exit(1);
+            }
+            console.log(`npm ${version} supports trusted publishing.`);
+          '
+
+      # Probe the exact URLs the wrapper's first-run downloader builds
+      # (internal/release/release.go asset-name scheme) as an anonymous client
+      # — install.sh/install.ps1 and `zero update` read them too. This also
+      # blocks publishing while the repo is still private: private release
+      # assets 404 without auth, exactly as they would for an installing user.
+      - name: Verify release assets are downloadable
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          base="https://github.com/${GITHUB_REPOSITORY}/releases/download/v${version}"
+          for asset in \
+            "zero-v${version}-linux-x64.tar.gz" \
+            "zero-v${version}-linux-arm64.tar.gz" \
+            "zero-v${version}-macos-x64.tar.gz" \
+            "zero-v${version}-macos-arm64.tar.gz" \
+            "zero-v${version}-windows-x64.zip"; do
+            for url in "${base}/${asset}" "${base}/${asset}.sha256"; do
+              if ! curl -fsSLI -o /dev/null "$url"; then
+                echo "::error::${url} is not publicly downloadable — the wrapper's fallback downloader and install.sh would fail. Is the repo public and are all assets uploaded?" >&2
+                exit 1
+              fi
+            done
+          done
+          echo "all release assets for v${version} are publicly downloadable."
+
+      - name: Download release artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: zero-*
+          path: dist/artifacts
+          merge-multiple: true
+
+      - name: Assemble npm packages
+        run: node scripts/npm/build-platform-packages.mjs --artifacts-dir dist/artifacts --out-dir dist/npm
+
+      # Platform versions are semver PRERELEASES of the wrapper version
+      # (X.Y.Z-linux-x64), so they must never publish under the default
+      # `latest` dist-tag — that would make `npm install @gitlawb/zero`
+      # deliver a platform payload as the CLI. Publish them under a dedicated
+      # tag and assert `latest` survived before the wrapper goes out.
+      - name: Publish platform packages to npm
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          for dir in dist/npm/platforms/*/; do
+            echo "publishing ${dir}"
+            (cd "$dir" && npm publish --access public --tag platform)
+          done
+          # Tolerate a failed lookup (registry lag, or no latest tag yet on a
+          # bootstrap publish): under set -e a bare failure here would abort
+          # AFTER the platform payloads went out, leaving no wrapper and a
+          # re-run that fails on republishing existing versions. An empty
+          # value falls through the guard below.
+          latest="$(npm view @gitlawb/zero dist-tags.latest || true)"
+          case "$latest" in
+            "${version}-"*)
+              echo "::error::dist-tag latest points at platform version ${latest} — a platform publish clobbered it. Fix the dist-tag before the wrapper publish." >&2
+              exit 1
+              ;;
+          esac
+          echo "dist-tag latest is ${latest} (unchanged by platform publishes)."
+
+      - name: Publish wrapper to npm
+        shell: bash
+        run: |
+          version="$(node -p "require('./package.json').version")"
+          (cd dist/npm/wrapper && npm publish --access public)
+          # Confirm the wrapper owns `latest` (retry: registry metadata can lag
+          # a publish by a few seconds).
+          for attempt in 1 2 3 4 5; do
+            latest="$(npm view @gitlawb/zero dist-tags.latest || true)"
+            if [ "$latest" = "$version" ]; then
+              echo "dist-tag latest is ${version}."
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::dist-tag latest is ${latest}, expected ${version} after the wrapper publish." >&2
+          exit 1
