@@ -42,67 +42,48 @@ zero exec --output-format stream-json < turns.jsonl
 
 ## Install
 
-### npm
-
-```bash
-npm install -g @gitlawb/zero
-zero
-```
-
-The npm package is a small wrapper whose platform build (Linux and macOS on
-x64/arm64, Windows on x64 — including the browser/terminal control helpers)
-installs as an optional dependency straight from the npm registry — no install
-scripts, no downloads outside npm. Bun, pnpm, and yarn work the same way with
-no trust or approval steps. Installs that skip optional dependencies
-(`--omit=optional`) still work: the wrapper fetches the binary from the
-matching GitHub Release whenever it is missing. Windows on ARM runs the x64
-build under emulation. See [docs/NPM_PACKAGING.md](docs/NPM_PACKAGING.md) for
-how the package is put together.
-
-### Install scripts
+### Install script (recommended)
 
 Linux/macOS:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Gitlawb/zero/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/abelcondev/kez/main/scripts/install.sh | bash
 ```
 
 Windows PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/Gitlawb/zero/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/abelcondev/kez/main/scripts/install.ps1 | iex
 ```
+
+The script downloads the binary for your platform from the latest
+[GitHub Release](https://github.com/abelcondev/kez/releases), verifies its
+SHA-256 checksum, and installs `kez` to `~/.local/bin` (or
+`%LOCALAPPDATA%\kez\bin` on Windows). Override the target with
+`KEZ_INSTALL_DIR`, pin a version with `KEZ_VERSION`, or point at a fork with
+`KEZ_REPO`. If the install dir is not already on your `PATH`, the script tells
+you to add it.
 
 ### From source
 
 Source builds require Go 1.26.5+.
 
 ```bash
-git clone https://github.com/Gitlawb/zero.git
-cd zero
-go run ./cmd/zero
+git clone https://github.com/abelcondev/kez.git
+cd kez
+go build -o kez ./cmd/kez
 ```
 
-Release installers and the npm wrapper require published GitHub Release assets.
-If you are testing before the first public release, build from source:
-
-```bash
-go build -o zero ./cmd/zero
-```
+Put `kez` somewhere on your `PATH` (`~/.local/bin` is a good default), or run it
+directly with `go run ./cmd/kez`.
 
 On Linux, build the sandbox helper too if you want native sandboxing:
 
 ```bash
-go build -o zero-linux-sandbox ./cmd/zero-linux-sandbox
-go build -o zero-seccomp ./cmd/zero-seccomp   # optional compatibility wrapper
+go build -o kez-linux-sandbox ./cmd/zero-linux-sandbox
 ```
 
-Put `zero` and `zero-linux-sandbox` in the same directory on `PATH`
-(`~/.local/bin` is a good default). macOS does not need an extra helper binary.
-Windows source builds can use the main `zero.exe` as their sandbox helper; release
-archives still ship standalone Windows helper executables.
-
-More install details: [docs/INSTALL.md](docs/INSTALL.md).
+macOS does not need an extra helper binary.
 
 ## First Run
 
