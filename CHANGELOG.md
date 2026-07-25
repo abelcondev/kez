@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 aims to follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html) once the first release is
 tagged. Until then, source builds report the version `dev`.
 
+## [0.6.0](https://github.com/abelcondev/kez/compare/v0.5.0...v0.6.0) (2026-07-25)
+
+
+### Features
+
+* kez — fork de zero con SDD nativo, gates, brand e instalador ([bd5d937](https://github.com/abelcondev/kez/commit/bd5d937e3e01a6d2a1b13f607f4d8296e1550394))
+
 ## [0.5.0](https://github.com/Gitlawb/zero/compare/v0.4.0...v0.5.0) (2026-07-22)
 
 
