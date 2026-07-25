@@ -15,6 +15,14 @@ const (
 	themeLight themeMode = "light"
 )
 
+// Auto-mode defaults: which registered theme `auto` resolves to for each
+// terminal background. These are concrete curated themes rather than the plain
+// "dark"/"light" palettes, so a fresh install looks good out of the box.
+const (
+	autoDarkTheme  themeMode = "rose-pine"
+	autoLightTheme themeMode = "dune"
+)
+
 // themeModes lists the values /theme accepts, in picker order: `auto` first, then
 // every registered theme (theme_palettes.go). It is the single ordered source
 // feeding both the picker and the /theme state list — adding a registry entry
@@ -67,9 +75,9 @@ func ValidThemeArg(s string) bool { return validThemeMode(s) }
 func applyTheme(mode themeMode, hasDarkBackground bool) themeMode {
 	resolved := mode
 	if mode == themeAuto {
-		resolved = themeDark
+		resolved = autoDarkTheme
 		if !hasDarkBackground {
-			resolved = themeLight
+			resolved = autoLightTheme
 		}
 	}
 	// Resolve the (now concrete) mode to its registered palette; an unknown name
