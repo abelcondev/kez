@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/abelcondev/kez/internal/config"
 	"github.com/abelcondev/kez/internal/sdd"
 )
 
@@ -30,11 +31,13 @@ func runSDD(args []string, stdout io.Writer, stderr io.Writer, deps appDeps) int
 	case "status":
 		return runSDDStatus(root, stdout, stderr)
 	case "propose":
-		return runSDDPropose(args[1:], stdout, stderr, deps)
+		return runSDDPropose(root, args[1:], stdout, stderr, deps)
 	case "approve":
 		return runSDDApprove(root, args[1:], stdout, stderr)
 	case "task":
 		return runSDDTask(root, args[1:], stdout, stderr)
+	case "next":
+		return runSDDNext(root, stdout, stderr)
 	default:
 		return writeExecUsageError(stderr, fmt.Sprintf("unknown sdd command %q. Use `kez sdd --help`.", args[0]))
 	}
@@ -110,6 +113,15 @@ func runSDDStatus(root string, stdout io.Writer, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "    [%s] %s%s\n", statusOrDash(t.Status), t.Name, title)
 	}
+
+	// Loop position: the single next gate, so callers (and agents) can resume
+	// from disk state instead of re-reading the workflow from scratch.
+	if state, err := sdd.ReadLoopState(root, currentGitBranch(root)); err == nil {
+		if state.Branch != "" {
+			fmt.Fprintf(stdout, "  branch:    %s\n", state.Branch)
+		}
+		printNextAction(stdout, state.Next())
+	}
 	return exitSuccess
 }
 
@@ -157,11 +169,26 @@ func runSDDTask(root string, args []string, stdout io.Writer, stderr io.Writer) 
 // runSDDPropose drafts sdd/proposal.md from a natural-language description by
 // forwarding a seeded prompt to the normal exec machinery (provider, tools,
 // sandbox). The agent writes the proposal; it is told not to write code.
-func runSDDPropose(args []string, stdout io.Writer, stderr io.Writer, deps appDeps) int {
+//
+// When no provider can be resolved (the exec path would otherwise crash with a
+// provider error), it degrades gracefully: it writes a seeded proposal skeleton
+// with the description in place and tells the caller to fill it in and approve —
+// so the loop keeps moving without a model.
+func runSDDPropose(root string, args []string, stdout io.Writer, stderr io.Writer, deps appDeps) int {
 	description := strings.TrimSpace(strings.Join(nonFlagArgs(args), " "))
 	if description == "" {
 		return writeExecUsageError(stderr, `usage: kez sdd propose "<what you want to build>"`)
 	}
+
+	if _, err := deps.resolveConfig(root, config.Overrides{}); err != nil {
+		rel, seedErr := sdd.SeedProposal(root, description, time.Now())
+		if seedErr != nil {
+			return writeAppError(stderr, seedErr.Error(), exitCrash)
+		}
+		fmt.Fprintf(stdout, "No usable provider (%s).\nWrote a seeded proposal skeleton to %s — expand it, then run `kez sdd approve --title \"…\"`.\n", err.Error(), rel)
+		return exitSuccess
+	}
+
 	prompt := "Draft an OKF Spec-Driven Development proposal for the request below and write it to sdd/proposal.md " +
 		"(run the equivalent of `kez sdd init` first if sdd/ does not exist). Follow the existing proposal.md frontmatter " +
 		"(type: Proposal, a concise title, a one-line description, status: in-review) and the # Proposal / # Context / # Acceptance " +
@@ -239,13 +266,17 @@ Persistent, versioned spec artifacts under <workspace>/sdd:
   log.md        append-only history
 
 Lifecycle: propose → approve (→ decision) → task → implement, tracked in log.md.
+The same loop covers everything — discovery, architecture, foundations, and each
+feature are all passes through it. Run "kez sdd next" any time to see the one
+recommended next step from disk state.
 
 Usage:
   kez sdd init                       Scaffold the sdd/ knowledge base (idempotent)
   kez sdd propose "<what & why>"     Draft sdd/proposal.md via the agent (writes no code)
   kez sdd approve [--title <text>]   Promote proposal.md → decisions/NNN, update log + index
   kez sdd task <decision-ref> <t…>   Scaffold a pending task (Gherkin) linked to a decision
-  kez sdd status                     Report decision and task counts from artifact frontmatter
+  kez sdd status                     Report decisions, tasks, and the current loop position
+  kez sdd next                       Print the single recommended next step (resumable)
 
 Flags:
   -C, --cwd <dir>   Operate on the workspace containing <dir> (default: current directory)
