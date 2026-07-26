@@ -36,11 +36,12 @@ func NewAskUserTool() *askUserTool {
 	return &askUserTool{
 		baseTool: baseTool{
 			name: "ask_user",
-			description: "Ask the user one or more clarifying questions and wait for their answers. " +
-				"Use ONLY for genuinely blocking ambiguity that you cannot resolve from the workspace or reasonable assumptions. " +
-				"When the answer is likely one of a small set, you MAY include 2-4 suggested `options` and mark one as `recommended` " +
+			description: "Ask the user a clarifying question ONLY when you are blocked AND the answer is one of a small, known, closed set of choices " +
+				"(a few concrete, mutually exclusive paths — e.g. yes/no, or picking among 2-4 fixed options). " +
+				"For broad or open-ended questions, do NOT use this tool: ask in plain text in your reply instead, so the user can answer freely; " +
+				"this tool's fixed options anchor the user to your assumptions and cut off richer answers. " +
+				"When the set is genuinely closed, include 2-4 `options` and mark one as `recommended` " +
 				"(it must match one of the options) — an interactive front-end shows these as a quick picker with a \"type my own\" fallback. " +
-				"Options are optional: omit them for open-ended questions. " +
 				"If no interactive user is available, this returns guidance to proceed with your best assumption instead of blocking.",
 			parameters: Schema{
 				Type: "object",

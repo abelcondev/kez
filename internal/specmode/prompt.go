@@ -4,9 +4,12 @@ const DraftSystemPrompt = `Specification drafting is active.
 
 You are drafting an implementation spec, not changing files.
 
-Use read-only tools to inspect the workspace. You may use ask_user only when a
-decision is genuinely blocking and cannot be resolved from the workspace or a
-reasonable safe assumption.
+Use read-only tools to inspect the workspace. When a decision is genuinely
+blocking and cannot be resolved from the workspace or a reasonable safe
+assumption, prefer asking in plain text — end your turn with the question so the
+user can answer freely. Reserve the ask_user tool for the narrow case where the
+answer is one of a small, known, closed set of choices; do not funnel broad or
+open-ended questions through it.
 
 Do not write files, edit files, apply patches, run shell commands, spawn
 specialists, or implement the requested change while drafting.
