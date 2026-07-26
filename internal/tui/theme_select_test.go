@@ -156,8 +156,8 @@ func TestApplyThemeResolution(t *testing.T) {
 	}{
 		{themeAuto, true, autoDarkTheme, darkPalette.ink},    // auto+dark -> dark (Claude)
 		{themeAuto, false, autoLightTheme, lightPalette.ink}, // auto+light -> light (Claude)
-		{themeDark, false, themeDark, darkPalette.ink},        // explicit ignores bg
-		{themeLight, true, themeLight, lightPalette.ink},      // explicit ignores bg
+		{themeDark, false, themeDark, darkPalette.ink},       // explicit ignores bg
+		{themeLight, true, themeLight, lightPalette.ink},     // explicit ignores bg
 	}
 	for _, c := range cases {
 		got := applyTheme(c.mode, c.darkBg)
