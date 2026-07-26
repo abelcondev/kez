@@ -13,9 +13,13 @@ import "strings"
 // their diff bands and word spans; the muted>faint>faintest ramp monotonic toward
 // the surface; and selBg visibly separated from panel while its label stays legible.
 
-// darkPalette is the original Lime palette: a near-black chat surface with one
-// lime accent. bg (#070708) is the terminal's own canvas — deliberately never
-// painted — so no token references it.
+// darkPalette is the Claude Code dark palette: a near-black chat surface with a
+// single warm terracotta accent (#d97757, the Claude brand clay) in place of the
+// old lime. The neutral ramp (panel→faintest) and the semantic signal colors
+// (green/red/amber/blue, diff tints) keep their WCAG-AA-tuned values; only the
+// accent family (accent, selBg, cardRun) moves to the terracotta hue. bg
+// (#070708) is the terminal's own canvas — deliberately never painted — so no
+// token references it. `auto` resolves here on a dark OS/terminal background.
 var darkPalette = palette{
 	panel:     "#0e0e10",
 	promptBg:  "#262626",
@@ -25,7 +29,7 @@ var darkPalette = palette{
 	muted:     "#9a9aa2", // secondary text — lifted so it clearly out-ranks faint
 	faint:     "#8a8a92", // hints/metadata — nudged up to separate from faintest
 	faintest:  "#7c7c82", // line numbers/separators — pinned at the WCAG-AA floor on the dark panel
-	accent:    "#caff3f", // original bright lime (the brand accent)
+	accent:    "#d97757", // Claude terracotta (brand clay) — 4.8:1 on panel, 5.4:1 as bg vs black onAccent
 	green:     "#5dd1a4",
 	red:       "#ff7a7a",
 	amber:     "#ffc25c",
@@ -37,11 +41,11 @@ var darkPalette = palette{
 	addBgWord: "#2e654d", // changed span within an added line — brighter green (sep 1.83 vs addBg, addInk 7.1:1)
 	delBgWord: "#502d30", // changed span within a deleted line — brighter red (sep 1.44 vs delBg, delInk 7.7:1)
 	permBg:    "#1c1915",
-	selBg:     "#32401b", // selected row bg — brightened from #1d2114 so the highlighted row separates from the panel (sep 1.18→1.73) while ink label contrast stays ~9.4:1
+	selBg:     "#4d3626", // selected row bg — warm terracotta-tinted dark (sep 1.72 vs panel, matching the old olive) while ink label contrast stays ~9.5:1
 	addInk:    "#bdeed7",
 	delInk:    "#f2c4c4",
 	onAccent:  "#000000",
-	cardRun:   "#5a6b2e",
+	cardRun:   "#7a4d38", // running card border — terracotta mixed into line
 	cardErr:   "#6b3434",
 	cardPerm:  "#6b5a2e",
 }
@@ -365,12 +369,13 @@ var neonPalette = palette{
 	cardPerm:  "#8a8a1f",
 }
 
-// lightPalette is dark-on-light: a warm cream surface (so cards lift off the
-// terminal page, which Zero never paints) with near-black ink and an olive-lime
-// accent that keeps the brand identity while clearing AA on the light panel. The
-// muted/faint/faintest grays get progressively LIGHTER toward the surface; diff and
-// permission tints are light surfaces. Replaces the old flat cool-gray light set
-// whose muddy panel, sub-AA diff spans, and near-invisible selBg read as broken.
+// lightPalette is the Claude Code light palette: dark-on-light over a warm cream
+// surface (so cards lift off the terminal page, which Zero never paints) with
+// near-black ink and a deep terracotta accent (#a8501f — the Claude clay
+// darkened so it clears AA both as foreground on cream ~5.9:1 and as a selection
+// fill under white onAccent ~7:1). The muted/faint/faintest grays get
+// progressively LIGHTER toward the surface; diff and permission tints are light
+// surfaces. `auto` resolves here on a light OS/terminal background.
 var lightPalette = palette{
 	panel:     "#efebd4",
 	promptBg:  "#e3ddc2",
@@ -380,7 +385,7 @@ var lightPalette = palette{
 	muted:     "#4b5149",
 	faint:     "#575e55",
 	faintest:  "#636a61",
-	accent:    "#54700a",
+	accent:    "#a8501f", // Claude terracotta, darkened for AA on the cream panel (white onAccent)
 	green:     "#1e725c",
 	red:       "#c02434",
 	amber:     "#8a5f00",
@@ -392,11 +397,11 @@ var lightPalette = palette{
 	addBgWord: "#a2daae",
 	delBgWord: "#f2b6b6",
 	permBg:    "#f7ebc6",
-	selBg:     "#d4e08f",
+	selBg:     "#edc294", // selected row bg — warm sand/peach (sep 1.37 vs panel, better than the old olive's 1.18) with ~9.9:1 ink label contrast
 	addInk:    "#0c4026",
 	delInk:    "#641a1d",
 	onAccent:  "#ffffff",
-	cardRun:   "#b0be7e",
+	cardRun:   "#e0b58f", // running card border — terracotta mixed into the cream line
 	cardErr:   "#d8b0a8",
 	cardPerm:  "#d6c496",
 }

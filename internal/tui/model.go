@@ -152,7 +152,9 @@ type model struct {
 	responseStyle                 string
 	keyBindings                   keyBindings
 	themeMode                     themeMode // palette preference: auto (default), dark, light
-	hasDarkBg                     bool      // last terminal background-detection result (auto mode)
+	hasDarkBg                     bool      // last light/dark detection result (auto mode)
+	appearanceProbed              bool      // OS appearance read succeeded → it, not OSC 11, is authoritative
+	appearancePollSeq             int       // generation guard so only the newest appearance-poll chain stays live
 	userAgent                     string
 	compactRequests               int
 	compactInFlight               bool
@@ -991,6 +993,42 @@ func composerBlinkCmd() tea.Cmd {
 	})
 }
 
+// appearancePollInterval is how often auto mode re-reads the OS light/dark setting
+// so a system-appearance switch repaints the TUI live. A `defaults` read is a
+// sub-10ms subprocess, so a couple seconds is imperceptible yet keeps the poll
+// cheap. Only runs on platforms where osDarkAppearance reports a value (macOS).
+const appearancePollInterval = 2 * time.Second
+
+// appearancePollMsg carries an OS light/dark reading back to Update. seq ties it to
+// the appearance-poll chain that produced it so a stale chain (from a previous auto
+// session) is dropped instead of double-repainting. ok is false when the OS setting
+// isn't observable — the OSC 11 probe stays in charge there.
+type appearancePollMsg struct {
+	dark bool
+	ok   bool
+	seq  int
+}
+
+// detectAppearanceCmd reads the OS appearance once, immediately (no tick delay), so
+// `auto` corrects to the real light/dark palette at startup or the instant it is
+// selected — not two seconds later.
+func detectAppearanceCmd(seq int) tea.Cmd {
+	return func() tea.Msg {
+		dark, ok := osDarkAppearance()
+		return appearancePollMsg{dark: dark, ok: ok, seq: seq}
+	}
+}
+
+// appearancePollCmd schedules the next OS-appearance read. The handler re-arms it
+// only while auto mode is live and the OS setting is observable, so the chain stops
+// itself on non-macOS or after switching to an explicit theme.
+func appearancePollCmd(seq int) tea.Cmd {
+	return tea.Tick(appearancePollInterval, func(time.Time) tea.Msg {
+		dark, ok := osDarkAppearance()
+		return appearancePollMsg{dark: dark, ok: ok, seq: seq}
+	})
+}
+
 func (m model) Init() tea.Cmd {
 	cmds := []tea.Cmd{textinput.Blink, composerBlinkCmd()}
 	// Bubble Tea documents an initial WindowSizeMsg as delivered automatically
@@ -1011,10 +1049,15 @@ func (m model) Init() tea.Cmd {
 	if strings.TrimSpace(m.cwd) != "" {
 		cmds = append(cmds, gitSweepCmd(m.ctx, m.cwd, true))
 	}
-	// In auto mode, ask the terminal for its background color; the reply arrives
-	// as tea.BackgroundColorMsg and selects light vs dark (see updateModel).
+	// In auto mode, resolve light vs dark two ways: ask the terminal for its
+	// background color (OSC 11 → tea.BackgroundColorMsg) for terminals that answer,
+	// and read the OS appearance directly (detectAppearanceCmd → appearancePollMsg)
+	// for the ones that don't (e.g. Zed's terminal). On macOS the OS read wins and
+	// keeps polling so a system light/dark switch repaints live; elsewhere it
+	// reports "unknown" and the OSC 11 reply drives auto as before. seq 0 matches
+	// the model's initial appearancePollSeq (see updateModel's handler).
 	if m.themeMode == themeAuto {
-		cmds = append(cmds, tea.RequestBackgroundColor)
+		cmds = append(cmds, tea.RequestBackgroundColor, detectAppearanceCmd(m.appearancePollSeq))
 	}
 	// Warm model discovery for the active provider in the background so the
 	// context-usage gauge (used / total tokens + % fill) knows the active model's
@@ -1203,9 +1246,37 @@ func (m model) updateModel(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Terminal background-color reply (from Init's RequestBackgroundColor). In
 		// auto mode it selects light vs dark; applyTheme repaints (clears the render
 		// cache). An explicit dark/light theme ignores it but still records the bg.
+		// Once the OS appearance has resolved (macOS), that reading is authoritative
+		// and we ignore OSC 11 so the two can't fight over the palette.
+		if m.appearanceProbed {
+			return m, nil
+		}
 		m.hasDarkBg = msg.IsDark()
 		if m.themeMode == themeAuto {
 			applyTheme(themeAuto, m.hasDarkBg)
+		}
+		return m, nil
+	case appearancePollMsg:
+		// OS light/dark reading (macOS). Drop stale chains: only the latest
+		// appearancePollSeq — bumped whenever the theme preference changes — stays
+		// live, so switching themes never leaves two pollers repainting.
+		if msg.seq != m.appearancePollSeq {
+			return m, nil
+		}
+		if msg.ok {
+			// Repaint only on an actual change (or the very first successful read),
+			// since applyTheme clears the render cache — no need to do that every tick.
+			if !m.appearanceProbed || msg.dark != m.hasDarkBg {
+				m.hasDarkBg = msg.dark
+				if m.themeMode == themeAuto {
+					applyTheme(themeAuto, m.hasDarkBg)
+				}
+			}
+			m.appearanceProbed = true
+			// Keep watching for OS switches only while auto is the active preference.
+			if m.themeMode == themeAuto {
+				return m, appearancePollCmd(msg.seq)
+			}
 		}
 		return m, nil
 	case tea.MouseMsg:
@@ -4208,8 +4279,9 @@ func (m model) choosePicker() (tea.Model, tea.Cmd) {
 		if m.themeMode == themeAuto {
 			// Re-probe the terminal background so a committed `auto` re-detects
 			// light/dark instead of reusing the preview's reading — mirrors the
-			// text /theme dispatch (M17).
-			return m, tea.RequestBackgroundColor
+			// text /theme dispatch (M17). detectAppearanceCmd restarts the OS poll
+			// (handleThemeCommand already bumped appearancePollSeq).
+			return m, tea.Batch(tea.RequestBackgroundColor, detectAppearanceCmd(m.appearancePollSeq))
 		}
 	}
 	return m, cmd
@@ -4581,7 +4653,9 @@ func (m model) dispatchCommand(command parsedCommand) (tea.Model, tea.Cmd) {
 			// Re-probe the terminal background so /theme auto re-detects light/dark
 			// instead of reusing a stale reading from startup; the BackgroundColorMsg
 			// handler re-applies the auto palette with the fresh result (M17).
-			return m, tea.RequestBackgroundColor
+			// detectAppearanceCmd restarts the OS poll (handleThemeCommand already
+			// bumped appearancePollSeq).
+			return m, tea.Batch(tea.RequestBackgroundColor, detectAppearanceCmd(m.appearancePollSeq))
 		}
 		return m, nil
 	case commandImage:

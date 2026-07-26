@@ -8,6 +8,29 @@ import (
 	tea "charm.land/bubbletea/v2"
 )
 
+// cmdReProbesBackground reports whether cmd re-detects the terminal background —
+// either tea.RequestBackgroundColor directly, or (the auto case) a tea.Batch that
+// includes it alongside the OS-appearance detection command.
+func cmdReProbesBackground(cmd tea.Cmd) bool {
+	if cmd == nil {
+		return false
+	}
+	want := reflect.ValueOf(tea.RequestBackgroundColor).Pointer()
+	if reflect.ValueOf(cmd).Pointer() == want {
+		return true
+	}
+	batch, ok := cmd().(tea.BatchMsg)
+	if !ok {
+		return false
+	}
+	for _, c := range batch {
+		if c != nil && reflect.ValueOf(c).Pointer() == want {
+			return true
+		}
+	}
+	return false
+}
+
 // TestThemeAutoReProbesBackground guards the M17 fix at the command-dispatch level
 // (not just the handleThemeCommand helper): selecting `/theme auto` must return
 // tea.RequestBackgroundColor so the terminal background is re-detected live, while
@@ -23,9 +46,8 @@ func TestThemeAutoReProbesBackground(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("/theme auto must return a non-nil cmd (background re-probe)")
 	}
-	want := reflect.ValueOf(tea.RequestBackgroundColor).Pointer()
-	if reflect.ValueOf(cmd).Pointer() != want {
-		t.Error("/theme auto cmd must be tea.RequestBackgroundColor")
+	if !cmdReProbesBackground(cmd) {
+		t.Error("/theme auto cmd must re-probe via tea.RequestBackgroundColor")
 	}
 
 	m2 := newModel(context.Background(), Options{ModelName: "gpt-4"})

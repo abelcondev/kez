@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"reflect"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -218,8 +217,8 @@ func TestThemePickerAutoCommitReprobesBackground(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("committing auto must return a background re-probe cmd")
 	}
-	if reflect.ValueOf(cmd).Pointer() != reflect.ValueOf(tea.RequestBackgroundColor).Pointer() {
-		t.Error("committing auto must return tea.RequestBackgroundColor")
+	if !cmdReProbesBackground(cmd) {
+		t.Error("committing auto must re-probe via tea.RequestBackgroundColor")
 	}
 }
 

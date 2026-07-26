@@ -32,9 +32,11 @@ func TestStreamingFadePaletteMonotonic(t *testing.T) {
 	// so per-bucket comparisons are byte-stable. The endpoint byte
 	// values are the contract — the hex strings are not.
 	fresh := rgbaOf(t, palette[0])
-	// Sanity: palette[0] must equal the accent endpoint (#caff3f).
-	if fresh.R != 0xca || fresh.G != 0xff || fresh.B != 0x3f {
-		t.Errorf("palette[0] RGBA = %v, want {R:0xca, G:0xff, B:0x3f} (accent)", fresh)
+	// Sanity: palette[0] must equal the accent endpoint. Derive the expected bytes
+	// from darkPalette.accent so this stays correct if the brand accent changes.
+	wantR, wantG, wantB, _ := lipgloss.Color(darkPalette.accent).RGBA()
+	if uint32(fresh.R) != wantR>>8 || uint32(fresh.G) != wantG>>8 || uint32(fresh.B) != wantB>>8 {
+		t.Errorf("palette[0] RGBA = %v, want the darkPalette.accent endpoint %s", fresh, darkPalette.accent)
 	}
 	last := rgbaOf(t, palette[streamingFadeSteps-1])
 	if last == fresh {

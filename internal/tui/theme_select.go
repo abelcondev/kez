@@ -16,11 +16,12 @@ const (
 )
 
 // Auto-mode defaults: which registered theme `auto` resolves to for each
-// terminal background. These are concrete curated themes rather than the plain
-// "dark"/"light" palettes, so a fresh install looks good out of the box.
+// terminal background. These are the plain "dark"/"light" built-ins (the Claude
+// Code palette) so `auto` follows the OS light/dark setting without dragging in
+// a custom theme — the custom themes stay opt-in via /theme.
 const (
-	autoDarkTheme  themeMode = "rose-pine"
-	autoLightTheme themeMode = "dune"
+	autoDarkTheme  themeMode = "dark"
+	autoLightTheme themeMode = "light"
 )
 
 // themeModes lists the values /theme accepts, in picker order: `auto` first, then
@@ -135,6 +136,9 @@ func (m model) handleThemeCommand(args string) (model, string) {
 		return m, "Theme\nUnknown theme: " + arg + " (use /theme with no argument to pick from the list)"
 	}
 	m.themeMode = themeMode(arg)
+	// Retire any live OS-appearance poll from the previous preference; if the new
+	// mode is auto, the caller restarts one with this fresh seq (see updateModel).
+	m.appearancePollSeq++
 	resolved := applyTheme(m.themeMode, m.hasDarkBg)
 	active := arg
 	if m.themeMode == themeAuto {
