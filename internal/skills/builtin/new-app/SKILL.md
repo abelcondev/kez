@@ -1,145 +1,113 @@
 ---
 name: new-app
-description: Guided workflow for starting a brand-new application from scratch. Use this whenever the user wants to begin a new project, bootstrap a codebase, scaffold an app, or set up a fresh repo — covers discovery, stack selection with version research, native SDD + git setup with an architecture proposal, and project scaffolding. Triggers on phrases like "new app", "start a project", "empezar un proyecto", "arrancar de cero", "bootstrap".
+description: Guided workflow for starting a brand-new application from scratch and driving it forward. Use whenever the user wants to begin a new project, bootstrap a codebase, scaffold an app, or set up a fresh repo — covers discovery, stack selection with version research, native SDD + git, architecture, and foundations, all as passes through one uniform proposal→decision→task→implement loop. Triggers on phrases like "new app", "start a project", "empezar un proyecto", "arrancar de cero", "bootstrap".
 ---
 
-# new-app — the discovery-to-foundations copilot
+# new-app — one loop from blank directory to shipping
 
-You are guiding a human from a blank directory to a project with durable
-decisions recorded, tests running, and git clean — **before** the first line of
-feature code. You accompany them; you do not run ahead of them.
+Everything is the same loop: **discovery, stack, architecture, foundations, and
+every feature are all passes through `propose → approve → task → implement`.**
+There is no separate "setup mode" that hands off to a "feature loop" later — the
+project's first commits are just its first iterations. You accompany the human
+through each gate; you never run ahead of them.
 
 Respond in the user's language (mirror whatever they write in).
 
-## The golden rule — one step at a time
+## Driver — the invariants (these always hold)
 
-After every sub-step that writes files, runs commands, or installs
-dependencies: **report what you did and stop for confirmation.** If the user
-says "continue" / "sigue", do only the *next* sub-step — never the whole
-remaining phase. The human owns every gate.
+- **One step at a time.** After any sub-step that writes files, runs commands,
+  or installs deps: report what you did and stop. On "continue"/"sigue", do only
+  the *next* sub-step — never the rest of a phase. The human owns every gate.
+- **The human owns decisions.** Never assume a package manager. Never use
+  `@latest` — pin every version. If a user's choice conflicts with a
+  requirement, name the conflict and let them decide; never substitute silently.
+- **Resume from disk, not from this skill.** To recover "where am I", run
+  **`kez sdd next`** (the single recommended step) or **`kez sdd status`** (full
+  loop position). Do NOT re-load this skill every turn — its guidance does not
+  change; only the loop position does, and that lives in `sdd/` + git.
 
-Never assume a package manager (bun / pnpm / npm / yarn). Never use `@latest`;
-pin every version. Never substitute a user's decision silently — if their choice
-conflicts with a requirement, name the conflict and let them decide.
+## The seed (the only thing outside the loop — two commands)
 
----
-
-## Phase 1 — Discovery
-
-Ask only questions whose answer changes the architecture. Group them 2–3 per
-message, not all at once. Cover, as relevant:
-
-- **Users & concurrency**: roles, concurrent users, single- vs multi-tenant.
-- **Connectivity**: must it work offline? sync on reconnect?
-- **Device & interaction**: desktop / tablet / mobile / kiosk; hardware
-  (thermal printer, scanner, camera…).
-- **Legal & compliance**: e-invoicing (SUNAT/SAT/AFIP…), data residency (GDPR…).
-- **Business logic**: the one flow that must never fail; external integrations;
-  migration of existing data.
-- **Deployment**: who hosts, budget, who maintains, deadline.
-
-**Gate:** hand back a short summary of the answers and get confirmation before
-moving on.
-
-## Phase 2 — Their stack first, research second
-
-Never propose a stack without asking. Ask conversationally first: base
-technologies already in mind (frontend, backend/BaaS, DB), package manager,
-pieces already decided, where they have the most expertise, what to avoid.
-
-Then, mandatory research for **each** library (theirs and the ones you add — UI,
-icons, state, forms, validation):
-
-1. If a docs MCP is connected (e.g. context7): `resolve-library-id` → fetch the
-   library docs. If none is available, use the npm registry / the library's
-   release page directly. Either way, **do the research** — do not guess versions.
-2. Cross-check peer dependencies across all candidates together.
-
-For each library report: pinned stable version (never `@latest`), confirmed
-compatibility, relevant breaking changes, and whether it is production-ready for
-the Phase 1 requirements. If a choice of theirs clashes with a discovery
-requirement (e.g. offline-first vs a server-only stack), flag it — they decide.
-
-## Phase 3 — SDD + Git + Architecture proposal
-
-One sub-step at a time:
+The loop needs a repo and a knowledge base to write into. That is the whole
+bootstrap:
 
 1. **`git init`** — inside the project directory, never a parent (never their
-   home). Verify with `git rev-parse --show-toplevel` before proceeding.
-2. **`kez sdd init`** — scaffold the native OKF knowledge base (`sdd/`: index,
-   log, proposal, decisions/, tasks/).
-3. **Record the discovery** — `kez sdd propose "Discovery: <summary of Phase 1
-   answers>"`, review, then `kez sdd approve --title "Discovery"`. This writes
-   `sdd/decisions/001-discovery.md`, appends `log.md`, updates the index.
-4. **Architecture proposal** — `kez sdd propose "<architecture>"` to draft
-   `sdd/proposal.md`, held to a senior quality bar:
-   - **Modular structure by domain** (`features/orders/` with its own
-     components/stores/types), thin routes, shared primitives in
-     `components/ui/`. Annotate each folder with its purpose. Keep files small —
-     kez's compiled quality gate blocks any source file over 300 lines, so a
-     god-file architecture will not even write. Design modular from the start.
-   - **Explicit module boundaries**: dependency direction routes → features →
-     shared; features never import each other.
-   - **Data model with intent**: relations, constraints, indexes for hot queries.
-   - **The critical flow, engineered**: step by step and what happens when each
-     step fails (offline, hardware down, double-submit, races).
-   - Every non-obvious decision justified against a discovery answer or a
-     research finding. Zero generic filler.
+   home). Verify with `git rev-parse --show-toplevel`.
+2. **`kez sdd init`** — scaffold the OKF knowledge base (`sdd/`: index, log,
+   proposal, decisions/, tasks/).
 
-**Hard gate:** tell them to review `sdd/proposal.md` and STOP. No scaffold, no
-installs, no more files until explicit approval. If they change the stack, go
-back to Phase 2 research and update the proposal.
+Then everything runs the loop below.
 
-## Phase 4 — Setup (only after approval)
+## The loop (repeat for discovery, architecture, foundations, every feature)
 
-1. **Archive the decision** — `kez sdd approve --title "Architecture"` promotes
-   the proposal to `sdd/decisions/002-architecture.md`, logs it, resets the
-   proposal stub.
-2. **Scaffold the app** — with pinned versions and the chosen package manager.
-   If the scaffolder refuses a non-empty directory (`sdd/` and `.git` already
-   exist), scaffold into a temp subdirectory and move the files up. Show the
-   generated structure.
-3. **Dependencies** — pin in the manifest, install, verify no peer-dependency
-   warnings.
-4. **Test runner** — pin it, co-locate `*.test.*` files (the SDD/TDD loop
-   depends on this), add the test script, get an empty suite green.
-5. **Env & gitignore** — a documented `.env.example`; `.gitignore` ignores
-   `.env`, local `.kez/*` state, and OS/editor noise, but KEEPS the shared
-   `.kez/require-branch` marker tracked so the branch policy travels with the
-   repo:
+```
+kez sdd propose "<what & why>"      → drafts sdd/proposal.md (no code)
+        ↓  ── human review gate ──
+kez sdd approve --title "..."        → promotes to decisions/NNN, logs, indexes
+        ↓
+kez sdd task <decision-ref> "<t>"    → pending task with Gherkin acceptance
+        ↓
+git checkout -b feat/<slug>          → branch before any code (guard enforces it)
+        ↓
+implement (TDD: red → green), keep files small, verify green
+        ↓
+push → prepare a `gh pr create …` command for the user to run
+        ↓
+        └────── merge → back to propose (run `kez sdd next` to confirm)
+```
 
-   ```gitignore
-   .env
-   .kez/*
-   !.kez/require-branch
-   ```
-   Never commit `.env`.
-6. **First commit** — check `git status` for leaks, propose the message, verify
-   with `git log -1`. (This foundations commit is the one time code lands on the
-   default branch directly; everything after goes through a branch + PR.)
-7. **Require feature branches** — write an empty `.kez/require-branch` marker.
-   This turns on kez's compiled branch guard: from now on it refuses code writes
-   while HEAD is on a protected branch (`main`/`master`/the remote default), so
-   every feature must start on a branch. Because the marker is committed,
-   teammates cloning the repo get the same policy. Commit it (e.g. `chore:
-   require feature branches for all changes`). (Override per-run with
-   `KEZ_REQUIRE_BRANCH=off` only when you know what you're doing.)
-8. **Repository** — ask: new GitHub repo or existing remote. For a new repo,
-   give them the `gh repo create …` command to run themselves (do not run it).
-   Offer minimal CI (lint + typecheck) only if they accept. If the remote's
-   default branch supports it, recommend enabling branch protection (require PRs)
-   on the host — the local guard and the host rule then reinforce each other.
-9. **Handoff** — the workflow ends here. From now on EVERY change runs the
-   native SDD loop on its own feature branch:
-   `git checkout -b feat/<task-slug>` → mini-discovery → `kez sdd propose` →
-   approval → `kez sdd task <decision-ref> <title>` → implement (TDD) → push →
-   prepare a `gh pr create …` command for the user to run. Nothing lands on the
-   protected branch except through a merged PR — including small fixes. Never
-   merge or push to the protected branch yourself.
+`kez sdd propose` uses the agent to draft the proposal; if no provider is
+configured it degrades to a seeded skeleton you fill in by hand — either way the
+loop keeps moving. Never write code during a proposal.
+
+## What each kind of pass needs
+
+The loop is identical; only the content of the proposal differs. Consult the
+relevant note once, when you actually enter that pass — do not front-load them.
+
+- **Discovery** (→ decision, no code). Ask only questions whose answer changes
+  the architecture, 2–3 at a time: users/roles/tenancy; offline & sync;
+  device/hardware; legal (e-invoicing, data residency); the one flow that must
+  never fail; deployment/hosting/deadline. Summarize, confirm, then approve.
+- **Stack** (→ decision, no code). Ask their base tech, package manager, fixed
+  pieces, expertise, what to avoid — *first*. Then research **every** library
+  (theirs and any you add): resolve real pinned stable versions (docs MCP or the
+  registry — never guess), cross-check peer deps together, flag any clash with a
+  discovery requirement. Report pinned versions + compatibility.
+- **Architecture** (→ decision, no code), held to a senior bar: modular by
+  domain (`features/orders/` with its own components/stores/types), thin routes,
+  shared primitives in `components/ui/`, each folder annotated. Explicit
+  boundaries: routes → features → shared; features never import each other.
+  Small files (kez's quality gate blocks any source file over 300 lines — design
+  for it). Data model with relations/constraints/indexes. The critical flow
+  engineered step by step, including what happens when each step fails (offline,
+  hardware down, double-submit, races). Every non-obvious choice justified
+  against a discovery answer or a research finding. Zero filler.
+- **Foundations** (→ **task**, code — the first implement pass). Scaffold with
+  pinned versions and the chosen package manager (if the scaffolder refuses a
+  non-empty dir because `sdd/`+`.git` exist, scaffold into a temp subdir and
+  move files up). Pin deps in the manifest, install, verify no peer warnings.
+  Pin the test runner, co-locate `*.test.*`, get an empty suite green. Add a
+  documented `.env.example`; `.gitignore` ignores `.env` and local `.kez/*` but
+  keeps `.kez/require-branch` tracked (`.env` / `.kez/*` / `!.kez/require-branch`)
+  — never commit `.env`. Write the empty `.kez/require-branch` marker to turn on
+  the branch guard so the policy travels with the repo. Acceptance is concrete:
+  suite green, `build` passes, git clean, no secrets. Like any task, it lands via
+  a branch + PR — not straight to the protected branch.
+- **Features / fixes** (→ task, code). Same loop, one branch each.
+
+## Repository & handoff
+
+Once foundations merge, ask: new GitHub repo or existing remote. For a new repo,
+give them the `gh repo create …` command to run themselves (do not run it).
+Offer minimal CI (lint + typecheck) only if they accept; recommend host branch
+protection (require PRs) so the local guard and the host rule reinforce each
+other. Nothing lands on the protected branch except through a merged PR —
+including small fixes. Never merge or push to the protected branch yourself.
 
 ---
 
-The point: the human keeps control at every gate (discovery summary,
-architecture proposal, every setup sub-step); their stack is the base, not
-something you impose; and the project is born with a durable decision record
-(`sdd/`), tests running, and clean git — before any feature code exists.
+The point: **one loop, no special setup mode.** The human keeps control at every
+gate; their stack is the base, not something you impose; the project is born with
+a durable decision record (`sdd/`), tests running, and clean git — and you resume
+by asking the repo (`kez sdd next`), never by reloading this skill.
