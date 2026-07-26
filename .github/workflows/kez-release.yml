@@ -85,6 +85,7 @@ jobs:
       - name: Build, archive, and checksum every target
         env:
           VERSION: ${{ steps.tag.outputs.version }}
+          TAG: ${{ steps.tag.outputs.tag }}
           CGO_ENABLED: "0"
         run: |
           set -euo pipefail
@@ -106,7 +107,9 @@ jobs:
               bin="kez"
               [ "$goos" = "windows" ] && bin="kez.exe"
               echo "building ${goos}/${goarch} -> ${os}-${arch}"
-              GOOS="$goos" GOARCH="$goarch" go build -trimpath -ldflags "-s -w" -o "$stage/$bin" ./cmd/kez
+              GOOS="$goos" GOARCH="$goarch" go build -trimpath \
+                -ldflags "-s -w -X github.com/abelcondev/kez/internal/cli.version=${TAG}" \
+                -o "$stage/$bin" ./cmd/kez
               if [ "$goos" = "windows" ]; then
                 archive="kez-v${VERSION}-${os}-${arch}.zip"
                 ( cd "$stage" && zip -q "../${archive}" "$bin" )
