@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 
@@ -281,18 +280,18 @@ func writeTestPDF(t *testing.T, dir, name, text string) string {
 	buf.WriteString("3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >>\nendobj\n")
 	content := "BT /F1 24 Tf 72 700 Td (" + text + ") Tj ET"
 	startObj()
-	buf.WriteString("4 0 obj\n<< /Length " + strconv.Itoa(len(content)) + " >>\nstream\n")
+	fmt.Fprintf(&buf, "4 0 obj\n<< /Length %d >>\nstream\n", len(content))
 	buf.WriteString(content)
 	buf.WriteString("\nendstream\nendobj\n")
 	startObj()
 	buf.WriteString("5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n")
 
 	xrefStart := buf.Len()
-	buf.WriteString("xref\n0 " + strconv.Itoa(len(offsets)+1) + "\n0000000000 65535 f \n")
+	fmt.Fprintf(&buf, "xref\n0 %d\n0000000000 65535 f \n", len(offsets)+1)
 	for _, off := range offsets {
-		buf.WriteString(fmt.Sprintf("%010d 00000 n \n", off))
+		fmt.Fprintf(&buf, "%010d 00000 n \n", off)
 	}
-	buf.WriteString("trailer\n<< /Size " + strconv.Itoa(len(offsets)+1) + " /Root 1 0 R >>\nstartxref\n" + strconv.Itoa(xrefStart) + "\n%%EOF\n")
+	fmt.Fprintf(&buf, "trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n", len(offsets)+1, xrefStart)
 
 	path := filepath.Join(dir, name)
 	if err := os.WriteFile(path, buf.Bytes(), 0o644); err != nil {

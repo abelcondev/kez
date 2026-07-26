@@ -8,7 +8,7 @@ import (
 func benchmarkIssue561Model(turns int) model {
 	m := transcriptViewTestModel()
 	m.altScreen = true
-	for i := 0; i < turns; i++ {
+	for i := range turns {
 		m.transcript = append(m.transcript,
 			transcriptRow{kind: rowUser, text: fmt.Sprintf("question %d", i)},
 			transcriptRow{kind: rowAssistant, text: fmt.Sprintf("answer %d", i), final: true},
@@ -32,7 +32,7 @@ func BenchmarkIssue561SettledAltScreen(b *testing.B) {
 	}
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		_ = m.transcriptBodyItems(width, "", false)
 	}
 }
