@@ -300,21 +300,22 @@ func providerDisplayNameIsGenericCustom(name string) bool {
 	}
 }
 
-// nextPermissionMode toggles between the two prompt-respecting modes:
-// Auto ⇄ Ask. Unsafe (which disables permission prompts entirely) is
-// deliberately NOT reachable by a casual keypress — a single shift+tab landing
-// on it would let prompt-required tools run with no decision. Unsafe stays an
-// explicit opt-in (the launch/--skip-permissions-unsafe path), not a UI toggle.
-// Unsafe is folded back to Ask so the toggle always lands somewhere safe.
+// nextPermissionMode cycles the three interactive permission modes in order of
+// increasing autonomy: Auto → Ask → Yolo (PermissionModeUnsafe) → Auto. Yolo
+// disables permission prompts entirely, so it sits two deliberate shift+tab
+// presses from the default (Auto) and is rendered in red — reaching it is an
+// explicit act, never an accidental single-key landing from Auto.
 func nextPermissionMode(mode agent.PermissionMode) agent.PermissionMode {
 	switch mode {
 	case agent.PermissionModeAuto:
 		return agent.PermissionModeAsk
 	case agent.PermissionModeAsk:
+		return agent.PermissionModeUnsafe
+	case agent.PermissionModeUnsafe:
 		return agent.PermissionModeAuto
 	default:
-		// Anything else (incl. an externally-set Unsafe) folds to Ask — the stricter
-		// landing, so toggling never makes an Unsafe session less strict.
+		// Anything else (member-auto, spec-draft, empty) folds to Ask — the
+		// stricter landing, so toggling never widens authority unexpectedly.
 		return agent.PermissionModeAsk
 	}
 }
@@ -326,7 +327,7 @@ func (m model) modeLabel() (string, lipgloss.Style) {
 	case agent.PermissionModeAsk:
 		return "ask", zeroTheme.modeAsk
 	case agent.PermissionModeUnsafe:
-		return "unsafe", zeroTheme.modeUnsafe
+		return "yolo", zeroTheme.modeUnsafe
 	default:
 		mode := strings.TrimSpace(string(m.permissionMode))
 		if mode == "" {

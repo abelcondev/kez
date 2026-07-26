@@ -1725,8 +1725,7 @@ func (m model) updateModel(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.pendingAskUser != nil {
 				return m.moveAskUserTab(-1), nil
 			}
-			// shift+tab toggles the permission mode between Auto and Ask (Unsafe
-			// is intentionally not reachable by a casual keypress — see
+			// shift+tab cycles the permission mode Auto → Ask → Yolo → Auto (see
 			// nextPermissionMode), but only when nothing modal is up: a permission
 			// prompt, ask_user questionnaire, or open picker all take precedence
 			// and let the key fall through to their own handlers below.
@@ -4698,7 +4697,7 @@ func (m model) dispatchCommand(command parsedCommand) (tea.Model, tea.Cmd) {
 		if m.permissionMode != agent.PermissionModeUnsafe {
 			m.transcript = reduceTranscript(m.transcript, transcriptAction{
 				kind: actionAppendSystem,
-				text: "Shell escape (!) is disabled in " + string(m.permissionMode) + " mode — it bypasses the sandbox. Relaunch with --skip-permissions-unsafe to run shell commands directly.",
+				text: "Shell escape (!) is disabled in " + string(m.permissionMode) + " mode — it bypasses the sandbox. Switch to yolo mode (shift+tab) or relaunch with --skip-permissions-unsafe to run shell commands directly.",
 			})
 			return m, nil
 		}

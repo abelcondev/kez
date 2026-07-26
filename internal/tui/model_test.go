@@ -1896,29 +1896,28 @@ func TestShiftTabCyclesPermissionMode(t *testing.T) {
 	m := newModel(context.Background(), Options{PermissionMode: agent.PermissionModeAuto})
 	m.width = 96
 
-	// shift+tab toggles Auto<->Ask only; Unsafe is intentionally NOT reachable by
-	// a casual keypress (it disables permission prompts).
-	for _, want := range []agent.PermissionMode{
-		agent.PermissionModeAsk,
-		agent.PermissionModeAuto,
-	} {
+	// shift+tab cycles Auto → Ask → Yolo (Unsafe) → Auto, and the rendered status
+	// label tracks each mode.
+	steps := []struct {
+		wantMode  agent.PermissionMode
+		wantLabel string
+	}{
+		{agent.PermissionModeAsk, "ask"},
+		{agent.PermissionModeUnsafe, "yolo"},
+		{agent.PermissionModeAuto, "auto-approve"},
+	}
+	for _, step := range steps {
 		updated, cmd := m.Update(testKeyShift(tea.KeyTab))
 		m = updated.(model)
 		if cmd != nil {
 			t.Fatalf("expected shift+tab to cycle mode synchronously, got command")
 		}
-		if m.permissionMode != want {
-			t.Fatalf("expected permission mode %q after shift+tab, got %q", want, m.permissionMode)
+		if m.permissionMode != step.wantMode {
+			t.Fatalf("expected permission mode %q after shift+tab, got %q", step.wantMode, m.permissionMode)
 		}
-		if m.permissionMode == agent.PermissionModeUnsafe {
-			t.Fatalf("shift+tab must never land on Unsafe")
+		if label, _ := m.modeLabel(); label != step.wantLabel {
+			t.Fatalf("expected mode label %q, got %q", step.wantLabel, label)
 		}
-	}
-
-	// The rendered status label tracks the cycled mode.
-	label, _ := m.modeLabel()
-	if label != "auto-approve" {
-		t.Fatalf("expected mode label to track cycled mode, got %q", label)
 	}
 }
 
@@ -2678,17 +2677,21 @@ func testSessionStore(t *testing.T) *sessions.Store {
 	})
 }
 
-func TestNextPermissionModeFoldsUnsafeToAsk(t *testing.T) {
+func TestNextPermissionModeCyclesThroughYolo(t *testing.T) {
+	// Auto → Ask → Yolo (Unsafe) → Auto: yolo is two deliberate presses from the
+	// default, never a single accidental landing from Auto.
 	if got := nextPermissionMode(agent.PermissionModeAuto); got != agent.PermissionModeAsk {
 		t.Fatalf("Auto -> %s, want Ask", got)
 	}
-	if got := nextPermissionMode(agent.PermissionModeAsk); got != agent.PermissionModeAuto {
-		t.Fatalf("Ask -> %s, want Auto", got)
+	if got := nextPermissionMode(agent.PermissionModeAsk); got != agent.PermissionModeUnsafe {
+		t.Fatalf("Ask -> %s, want Unsafe (yolo)", got)
 	}
-	// Unsafe must fold to the STRICTER Ask, never Auto (toggling an Unsafe session
-	// must not make it less strict).
-	if got := nextPermissionMode(agent.PermissionModeUnsafe); got != agent.PermissionModeAsk {
-		t.Fatalf("Unsafe -> %s, want Ask", got)
+	if got := nextPermissionMode(agent.PermissionModeUnsafe); got != agent.PermissionModeAuto {
+		t.Fatalf("Unsafe (yolo) -> %s, want Auto", got)
+	}
+	// Non-interactive modes fold to the stricter Ask.
+	if got := nextPermissionMode(agent.PermissionModeMemberAuto); got != agent.PermissionModeAsk {
+		t.Fatalf("MemberAuto -> %s, want Ask", got)
 	}
 }
 
