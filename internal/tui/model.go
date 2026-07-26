@@ -281,10 +281,14 @@ type model struct {
 	// the chat-column model copy in the two-column layout, where the plan is
 	// surfaced in the context sidebar instead so it isn't shown twice.
 	hidePinnedPlan bool
-	// sidebarHidden is the user's Ctrl+B preference to collapse the right context
-	// sidebar; when set, the chat reflows to full width. Distinct from the
-	// availability conditions in sidebarAvailable (geometry / mode / overlays).
-	sidebarHidden bool
+	// sidebarShown is the user's Ctrl+B preference to reveal the right context
+	// sidebar. It is opt-in: the zero value (false) keeps the sidebar hidden so it
+	// never auto-opens and steals chat width — the user reveals it manually with
+	// Ctrl+B, and the choice then persists across runs until they toggle it off
+	// again. Distinct from the availability conditions in sidebarAvailable
+	// (geometry / mode / overlays), which gate whether a revealed sidebar can
+	// actually render.
+	sidebarShown bool
 	// selectedFile is the touched file selected by clicking its FILES sidebar
 	// row: its edit cards tint in the chat (rowTouchesSelectedFile) and a second
 	// click opens the drill-in file view. "" when nothing is selected; Esc clears.
@@ -1765,7 +1769,7 @@ func (m model) updateModel(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if !m.transcriptDetailed && m.noBlockingModal() && m.sidebarToggleAllowed() {
 				// Just show/hide — no transcript notice. The reflow IS the feedback,
 				// and emitting a line every toggle piled up noise in the chat.
-				m.sidebarHidden = !m.sidebarHidden
+				m.sidebarShown = !m.sidebarShown
 				m.lineAges = nil
 				m.input.SetWidth(maxInt(20, m.chatColumnWidth()-14))
 				return m, nil
@@ -4885,10 +4889,10 @@ func (m model) beginRun(cancel context.CancelFunc) model {
 	m.stepExplanation = nil
 	m.planDetailOpen = false
 	m.planDetailGen++ // invalidate any in-flight step-explanation from the prior run
-	// A new run clears the sidebar's content (plan/agents), so the user's Ctrl+B
-	// hide was for the OLD context — reset it so the new run's sidebar isn't
-	// suppressed by a stale preference.
-	m.sidebarHidden = false
+	// Note: the sidebar reveal preference (sidebarShown) is deliberately left
+	// untouched here. The sidebar is opt-in and strictly manual — a new run must
+	// never auto-open it, and if the user did reveal it, that choice persists into
+	// the new run rather than being reset.
 	m.turnStartedAt = m.now()
 	m.lastStreamActivity = m.turnStartedAt
 	m.turnStreamedRunes = 0

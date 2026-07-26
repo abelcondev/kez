@@ -175,6 +175,9 @@ func sidebarTestModel() model {
 	// only claims a column when there are agents or an active plan). Tests that
 	// exercise specific agent/plan states set their own and override this.
 	m.plan.steps = []planStep{{content: "wire it up", status: "in_progress"}}
+	// The sidebar is opt-in (hidden by default); reveal it so these tests exercise
+	// the two-column layout as if the user had pressed Ctrl+B.
+	m.sidebarShown = true
 	return m
 }
 
@@ -231,13 +234,14 @@ func TestSidebarToggleHidesAndShows(t *testing.T) {
 		t.Fatal("sidebar should be active and available for the test model")
 	}
 
-	// Ctrl+B hide preference suppresses the sidebar even though it's available.
-	m.sidebarHidden = true
+	// Ctrl+B hide (clearing the reveal preference) suppresses the sidebar even
+	// though it's available.
+	m.sidebarShown = false
 	if m.sidebarActive() {
 		t.Fatal("sidebar should be inactive when hidden by the user")
 	}
 	if !m.sidebarAvailable() {
-		t.Fatal("sidebarAvailable must ignore the hide preference (so Ctrl+B can re-show)")
+		t.Fatal("sidebarAvailable must ignore the reveal preference (so Ctrl+B can re-show)")
 	}
 	// Hidden → the chat reflows to full width.
 	if got, want := m.chatColumnWidth(), chatWidth(m.width); got != want {
@@ -245,7 +249,7 @@ func TestSidebarToggleHidesAndShows(t *testing.T) {
 	}
 
 	// Toggling back restores the two-column layout.
-	m.sidebarHidden = false
+	m.sidebarShown = true
 	if !m.sidebarActive() {
 		t.Fatal("sidebar should be active again after un-hiding")
 	}

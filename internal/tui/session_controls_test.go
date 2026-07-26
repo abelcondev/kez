@@ -789,7 +789,7 @@ func TestStatusLineDropsTokenFigureWhenSidebarShowsIt(t *testing.T) {
 	}
 
 	// Sidebar hidden → the status line is the only home for the figure again.
-	m.sidebarHidden = true
+	m.sidebarShown = false
 	if m.sidebarActive() {
 		t.Fatal("sidebar should be inactive once hidden")
 	}

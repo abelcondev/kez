@@ -42,9 +42,11 @@ func sidebarWidth(total int) int {
 }
 
 // sidebarActive reports whether the two-column layout should render right now:
-// the sidebar is available AND the user hasn't collapsed it with Ctrl+B.
+// the user has revealed the sidebar with Ctrl+B (sidebarShown) AND it is
+// available. The sidebar is opt-in — it never renders until the user asks for it,
+// so it can't auto-open and shrink the chat.
 func (m model) sidebarActive() bool {
-	return !m.sidebarHidden && m.sidebarAvailable()
+	return m.sidebarShown && m.sidebarAvailable()
 }
 
 // sidebarToggleAllowed reports whether the toggle-sidebar keybinding should
@@ -78,7 +80,7 @@ func (m model) sidebarToggleAllowed() bool {
 // sidebarAvailable reports whether the two-column layout CAN render: only in
 // alt-screen managed mode, with a measured height, on a wide-enough terminal,
 // outside subchat/overlays, with real conversation. It ignores the user's Ctrl+B
-// hide preference (sidebarHidden) so the toggle handler can tell whether Ctrl+B
+// reveal preference (sidebarShown) so the toggle handler can tell whether Ctrl+B
 // would have any visible effect. The subchat drill-in keeps its own single-column
 // view, so the sidebar is suppressed there.
 func (m model) sidebarAvailable() bool {
@@ -121,10 +123,11 @@ func (m model) sidebarAvailable() bool {
 	if m.transcriptEmpty() {
 		return false
 	}
-	// Auto-hide when the panel has nothing to show (no sub-agents and no active
-	// plan): a fixed-width column of mostly empty space is wasted, so reclaim it
-	// for the full-width chat. The panel returns the moment an agent spawns or a
-	// plan starts. (Ctrl+B still force-hides it when there IS content.)
+	// Suppress when the panel has nothing to show (no sub-agents and no active
+	// plan): even if the user has revealed the sidebar (Ctrl+B), a fixed-width
+	// column of mostly empty space is wasted, so reclaim it for the full-width
+	// chat until there's real content to surface. It reappears the moment an agent
+	// spawns or a plan starts, provided the user still has it revealed.
 	if !m.sidebarHasContent() {
 		return false
 	}

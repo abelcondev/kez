@@ -162,7 +162,7 @@ func TestHelpOverlayKeepsTranscriptBodyBehindIt(t *testing.T) {
 }
 
 func TestCtrlBCtrlECursorNavigationBypass(t *testing.T) {
-	// 1. Empty composer: Ctrl+B should toggle sidebarHidden, Ctrl+E should toggle mouseReleased
+	// 1. Empty composer: Ctrl+B should toggle sidebarShown, Ctrl+E should toggle mouseReleased
 	m := newModel(context.Background(), Options{ModelName: "gpt-4o"})
 	m.altScreen = true
 	m.width = 120
@@ -172,11 +172,11 @@ func TestCtrlBCtrlECursorNavigationBypass(t *testing.T) {
 		t.Fatal("sidebar toggle should be allowed")
 	}
 
-	initialSidebar := m.sidebarHidden
+	initialSidebar := m.sidebarShown
 	updated, _ := m.Update(testKeyCtrl('b'))
 	next := updated.(model)
-	if next.sidebarHidden == initialSidebar {
-		t.Fatal("Ctrl+B on empty composer should toggle sidebarHidden")
+	if next.sidebarShown == initialSidebar {
+		t.Fatal("Ctrl+B on empty composer should toggle sidebarShown")
 	}
 
 	initialMouse := next.mouseReleased
@@ -198,11 +198,11 @@ func TestCtrlBCtrlECursorNavigationBypass(t *testing.T) {
 		t.Fatalf("composerValue = %q, want 'hello'", m2.composerValue())
 	}
 
-	initialSidebar2 := m2.sidebarHidden
+	initialSidebar2 := m2.sidebarShown
 	updated, _ = m2.Update(testKeyCtrl('b'))
 	next2 := updated.(model)
-	if next2.sidebarHidden != initialSidebar2 {
-		t.Fatal("Ctrl+B on non-empty composer should NOT toggle sidebarHidden")
+	if next2.sidebarShown != initialSidebar2 {
+		t.Fatal("Ctrl+B on non-empty composer should NOT toggle sidebarShown")
 	}
 
 	initialMouse2 := next2.mouseReleased
@@ -247,10 +247,10 @@ func TestRemappedToggleBindingsIgnoreComposerGuard(t *testing.T) {
 		t.Fatalf("remapped toggleMouse binding should not fall through to composer input, got %q", next.composerValue())
 	}
 
-	initialSidebar := next.sidebarHidden
+	initialSidebar := next.sidebarShown
 	updated, _ = next.Update(testKeyCtrl('y'))
 	next = updated.(model)
-	if next.sidebarHidden == initialSidebar {
+	if next.sidebarShown == initialSidebar {
 		t.Fatal("remapped Ctrl+Y toggleSidebar binding should still fire with a non-empty composer")
 	}
 	if next.composerValue() != "hello" {
@@ -289,10 +289,10 @@ func TestExplicitDefaultChordConfigStillRequiresEmptyComposer(t *testing.T) {
 		t.Fatal("explicit ctrl+e config should NOT toggle mouseReleased with a non-empty composer")
 	}
 
-	initialSidebar := next.sidebarHidden
+	initialSidebar := next.sidebarShown
 	updated, _ = next.Update(testKeyCtrl('b'))
 	next = updated.(model)
-	if next.sidebarHidden != initialSidebar {
-		t.Fatal("explicit ctrl+b config should NOT toggle sidebarHidden with a non-empty composer")
+	if next.sidebarShown != initialSidebar {
+		t.Fatal("explicit ctrl+b config should NOT toggle sidebarShown with a non-empty composer")
 	}
 }

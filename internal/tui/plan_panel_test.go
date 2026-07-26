@@ -246,6 +246,10 @@ func runningPlanModel(t *testing.T, steps int) model {
 		items[i] = tools.PlanItem{Content: fmt.Sprintf("Step number %d here", i+1), Status: status}
 	}
 	m.plan.updateFromItems(items, base)
+	// The sidebar is opt-in (hidden by default); reveal it so tests that assert the
+	// sidebar carries the plan exercise the two-column layout (as if the user had
+	// pressed Ctrl+B). Harmless for the pinned-panel tests that stay single-column.
+	m.sidebarShown = true
 	return m
 }
 
@@ -281,7 +285,7 @@ func TestPinnedPlanHiddenWhenEmpty(t *testing.T) {
 	}
 }
 
-// TestPinnedPlanHiddenWhenSidebarToggledOff: Ctrl+B (sidebarHidden) on a wide
+// TestPinnedPlanHiddenWhenSidebarToggledOff: Ctrl+B (clearing sidebarShown) on a wide
 // alt-screen terminal hides the plan entirely — it must NOT fall back to the
 // pinned panel above the composer, since the sidebar is the plan's home there.
 func TestPinnedPlanHiddenWhenSidebarToggledOff(t *testing.T) {
@@ -301,7 +305,7 @@ func TestPinnedPlanHiddenWhenSidebarToggledOff(t *testing.T) {
 	}
 
 	// Ctrl+B collapses the sidebar -> the plan must be hidden entirely, not pinned.
-	m.sidebarHidden = true
+	m.sidebarShown = false
 	if got := m.renderPinnedPlanPanel(m.chatColumnWidth(), 10); got != "" {
 		t.Fatalf("Ctrl+B should hide the plan entirely, but the pinned panel showed:\n%s", got)
 	}

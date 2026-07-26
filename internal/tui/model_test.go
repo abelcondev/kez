@@ -1462,17 +1462,30 @@ func TestStaleExplanationDropped(t *testing.T) {
 	}
 }
 
-// TestBeginRunResetsSidebarHidden: a new run clears the sidebar's content, so the
-// stale Ctrl+B hide preference is reset (the new run's sidebar isn't suppressed)
-// and the explanation generation advances.
-func TestBeginRunResetsSidebarHidden(t *testing.T) {
+// TestBeginRunPreservesSidebarPreference: the sidebar is opt-in and strictly
+// manual, so a new run must NEVER auto-open it and must leave the user's Ctrl+B
+// reveal choice untouched (both revealed and hidden persist). The explanation
+// generation still advances.
+func TestBeginRunPreservesSidebarPreference(t *testing.T) {
+	// Hidden stays hidden: a new run must not auto-open the sidebar.
 	m := newModel(context.Background(), Options{})
-	m.sidebarHidden = true
+	if m.sidebarShown {
+		t.Fatal("precondition: a fresh model should start with the sidebar hidden")
+	}
 	gen := m.planDetailGen
 	m = m.beginRun(nil)
-	if m.sidebarHidden {
-		t.Error("beginRun should reset the Ctrl+B hide preference for the new run")
+	if m.sidebarShown {
+		t.Error("beginRun must not auto-open the sidebar")
 	}
+
+	// Revealed stays revealed: the user's Ctrl+B choice persists across runs.
+	shown := newModel(context.Background(), Options{})
+	shown.sidebarShown = true
+	shown = shown.beginRun(nil)
+	if !shown.sidebarShown {
+		t.Error("beginRun must preserve the user's revealed sidebar preference")
+	}
+
 	if m.planDetailGen <= gen {
 		t.Errorf("beginRun should bump planDetailGen, was %d now %d", gen, m.planDetailGen)
 	}
