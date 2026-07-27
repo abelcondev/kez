@@ -142,6 +142,89 @@ func TestAddTaskLinksDecisionAndIsPending(t *testing.T) {
 	}
 }
 
+func TestPromotePreservesUITag(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	proposal := "---\ntype: Proposal\ntitle: Caja screen\ndescription: The cashier POS screen.\ntags: [ui]\nstatus: in-review\n---\n\n# Proposal\n\nBuild the caja screen.\n"
+	if err := os.WriteFile(filepath.Join(root, "sdd", "proposal.md"), []byte(proposal), 0o644); err != nil {
+		t.Fatalf("write proposal: %v", err)
+	}
+	rel, err := Promote(root, "", fixedTime(t))
+	if err != nil {
+		t.Fatalf("Promote: %v", err)
+	}
+	if got := readFile(t, filepath.Join(root, rel)); !strings.Contains(got, "tags: [ui]") {
+		t.Errorf("decision must carry the ui tag so the design gate fires:\n%s", got)
+	}
+}
+
+func TestCompleteTaskMarksDoneAndLogs(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	if _, err := AddTask(root, "decisions/001-arch.md", "Route guard", fixedTime(t)); err != nil {
+		t.Fatalf("AddTask: %v", err)
+	}
+	rel, err := CompleteTask(root, "001-route-guard", fixedTime(t))
+	if err != nil {
+		t.Fatalf("CompleteTask: %v", err)
+	}
+	if got := readFile(t, filepath.Join(root, rel)); !strings.Contains(got, "status: done") {
+		t.Errorf("task not marked done:\n%s", got)
+	}
+	if got := readFile(t, filepath.Join(root, "sdd", "log.md")); !strings.Contains(got, "Task 001-route-guard (Route guard) done.") {
+		t.Errorf("log missing completion line:\n%s", got)
+	}
+	// Idempotency of the loop: a completed task drops out of pending.
+	st, _ := ReadStatus(root)
+	if len(st.Tasks) != 1 || st.Tasks[0].Status != "done" {
+		t.Errorf("status = %+v, want one done task", st.Tasks)
+	}
+}
+
+func TestAddAndApproveDesign(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	rel, err := AddDesign(root, "decisions/002-caja-ui.md", "Caja screen", fixedTime(t))
+	if err != nil {
+		t.Fatalf("AddDesign: %v", err)
+	}
+	if rel != filepath.Join("sdd", "designs", "001-caja-screen.md") {
+		t.Fatalf("design path = %q", rel)
+	}
+	design := readFile(t, filepath.Join(root, rel))
+	for _, want := range []string{"type: Design", "status: in-review", "decision: decisions/002-caja-ui.md", "## Components used"} {
+		if !strings.Contains(design, want) {
+			t.Errorf("design missing %q\n---\n%s", want, design)
+		}
+	}
+
+	if _, err := ApproveDesign(root, "001-caja-screen", fixedTime(t)); err != nil {
+		t.Fatalf("ApproveDesign: %v", err)
+	}
+	if got := readFile(t, filepath.Join(root, rel)); !strings.Contains(got, "status: approved") {
+		t.Errorf("design not approved:\n%s", got)
+	}
+	if got := readFile(t, filepath.Join(root, "sdd", "log.md")); !strings.Contains(got, "Design 001-caja-screen (Caja screen) approved.") {
+		t.Errorf("log missing design approval:\n%s", got)
+	}
+}
+
+func TestCompleteTaskMissingErrors(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	if _, err := CompleteTask(root, "999-nope", fixedTime(t)); err == nil {
+		t.Fatal("CompleteTask on a missing task should error")
+	}
+}
+
 func TestSlugify(t *testing.T) {
 	cases := map[string]string{
 		"Magic-link auth":        "magic-link-auth",

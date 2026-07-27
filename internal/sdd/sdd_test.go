@@ -19,6 +19,7 @@ func TestScaffoldCreatesOKFBaseAndIsIdempotent(t *testing.T) {
 
 	want := []string{
 		filepath.Join("sdd", "decisions", "_template.md"),
+		filepath.Join("sdd", "designs", "_template.md"),
 		filepath.Join("sdd", "index.md"),
 		filepath.Join("sdd", "log.md"),
 		filepath.Join("sdd", "proposal.md"),

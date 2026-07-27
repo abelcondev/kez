@@ -207,9 +207,15 @@ func specialistDelegationContext(options Options) string {
 			continue
 		}
 		if desc := strings.TrimSpace(info.WhenToUse); desc != "" {
-			b.WriteString("- " + name + ": " + desc + "\n")
+			b.WriteString("- ")
+			b.WriteString(name)
+			b.WriteString(": ")
+			b.WriteString(desc)
+			b.WriteString("\n")
 		} else {
-			b.WriteString("- " + name + "\n")
+			b.WriteString("- ")
+			b.WriteString(name)
+			b.WriteString("\n")
 		}
 	}
 	b.WriteString("</specialists>")
@@ -266,7 +272,9 @@ func skillsContext(options Options) string {
 		listed++
 	}
 	if omitted > 0 {
-		b.WriteString("- …and " + strconv.Itoa(omitted) + " more (call skill with a name; an unknown name lists them all)\n")
+		b.WriteString("- …and ")
+		b.WriteString(strconv.Itoa(omitted))
+		b.WriteString(" more (call skill with a name; an unknown name lists them all)\n")
 	}
 	b.WriteString("</available_skills>")
 	return b.String()
@@ -294,10 +302,14 @@ func sessionRuntimeContext(options Options) string {
 	var b strings.Builder
 	b.WriteString("<session>\n")
 	if provider != "" {
-		b.WriteString("Active provider: " + provider + "\n")
+		b.WriteString("Active provider: ")
+		b.WriteString(provider)
+		b.WriteString("\n")
 	}
 	if model != "" {
-		b.WriteString("Active model: " + model + "\n")
+		b.WriteString("Active model: ")
+		b.WriteString(model)
+		b.WriteString("\n")
 	}
 	b.WriteString("Use the active provider/model above when answering questions about what is currently running. Persisted config commands may show saved defaults that differ from this live run/session.\n")
 	b.WriteString("</session>")
@@ -315,21 +327,28 @@ func workspaceContext(cwd string) string {
 	}
 	var b strings.Builder
 	b.WriteString("<environment>\n")
-	b.WriteString("Working directory: " + cwd + "\n")
-	b.WriteString("Operating system: " + runtime.GOOS + "\n")
+	b.WriteString("Working directory: ")
+	b.WriteString(cwd)
+	b.WriteString("\n")
+	b.WriteString("Operating system: ")
+	b.WriteString(runtime.GOOS)
+	b.WriteString("\n")
 	if runtime.GOOS == "windows" {
 		b.WriteString("Shell syntax: Windows cmd.exe syntax for exec_command/bash tools. To put | & > < etc inside an arg value, use double quotes around the value, not single quotes (single quotes do not protect metachars in cmd.exe): gh --jq \".a | b\", go test -run \"A|B\". Do not pipe to or invoke POSIX coreutils from Git for Windows (usr\\bin head/grep/tail/cat/...): they are MSYS binaries and fail under the write-restricted sandbox; use native Zero tools (grep, read_file, list_directory, glob) or cmd.exe findstr/more instead, or sandbox_permissions require_escalated only when host-level execution is truly required. Prefer the workdir/cwd argument over cd when changing directories.\n")
 	} else {
 		b.WriteString("Shell syntax: /bin/sh syntax for exec_command/bash tools; prefer the workdir/cwd argument instead of cd when changing directories.\n")
 	}
 	if branch := gitBranchForPrompt(cwd); branch != "" {
-		b.WriteString("Git branch: " + branch + "\n")
+		b.WriteString("Git branch: ")
+		b.WriteString(branch)
+		b.WriteString("\n")
 	}
 	b.WriteString("</environment>")
 
 	b.WriteString(projectGuidelines(cwd, FindProjectGitRoot(cwd)))
 	if repoMap := repoMapContext(cwd); repoMap != "" {
-		b.WriteString("\n\n## Repo map\n\n" + repoMap)
+		b.WriteString("\n\n## Repo map\n\n")
+		b.WriteString(repoMap)
 	}
 	return b.String()
 }
@@ -366,9 +385,16 @@ func sddContext(cwd string) string {
 
 	var b strings.Builder
 	b.WriteString("## Spec-Driven Development (OKF)\n\n")
-	b.WriteString("This project keeps a native SDD knowledge base under `" + sdd.DirName +
-		"/`, read first every session. Ground your work in it: consult the relevant `decisions/` entry before implementing, honor each task's Gherkin acceptance criteria, and never change architecture without an approved decision. When you finish a task, update its `status` and append a line to `" +
-		sdd.DirName + "/log.md`.\n\n")
+	b.WriteString("This project keeps a native SDD knowledge base under `")
+	b.WriteString(sdd.DirName)
+	b.WriteString("/`, read first every session. Ground your work in it: consult the relevant `decisions/` entry before implementing, honor each task's Gherkin acceptance criteria, and never change architecture without an approved decision. When you finish a task, close it with `kez sdd done <task>` (it flips the status and appends to `")
+	b.WriteString(sdd.DirName)
+	b.WriteString("/log.md`). Resume by asking the repo — run `kez sdd next` for the single next step; do only that step and stop at every gate.\n\n")
+
+	b.WriteString("### UI work\n\n")
+	b.WriteString("A task that ships user-facing UI must have an approved design first (`")
+	b.WriteString(sdd.DirName)
+	b.WriteString("/designs/NNN`, built in Penpot/Figma via MCP and approved with `kez sdd approve-design`) — do not jump straight to code. Build screens from the project's component library / design system as recorded in the index's \"UI conventions\"; do not hand-roll with raw CSS or utility classes when a component exists. If a primitive is missing, add it to the library first.\n\n")
 
 	// When the repo requires PRs (a .kez/require-branch marker or KEZ_REQUIRE_BRANCH),
 	// state the branch/PR policy up front so the agent branches BEFORE editing —
@@ -379,7 +405,10 @@ func sddContext(cwd string) string {
 		b.WriteString("This repo requires every change to go through a feature branch and a pull request; the default branch is protected. Before writing or editing code, create/switch to a feature branch tied to the task (`git checkout -b feat/<task-slug>`) — a compiled guard refuses code writes on a protected branch. When the task's acceptance criteria pass, push the branch and prepare a `gh pr create` command for the user to run; never merge or push to the protected branch yourself.\n\n")
 	}
 
-	b.WriteString("### " + sdd.DirName + "/index.md\n\n" + content)
+	b.WriteString("### ")
+	b.WriteString(sdd.DirName)
+	b.WriteString("/index.md\n\n")
+	b.WriteString(content)
 
 	if st, err := sdd.ReadStatus(root); err == nil {
 		var pending []sdd.TaskInfo
@@ -393,14 +422,35 @@ func sddContext(cwd string) string {
 		if len(pending) > 0 {
 			b.WriteString("\n\n### Pending tasks")
 			for _, task := range pending {
-				b.WriteString("\n- " + task.Name)
+				b.WriteString("\n- ")
+				b.WriteString(task.Name)
 				if task.Title != "" {
-					b.WriteString(" — " + task.Title)
+					b.WriteString(" — ")
+					b.WriteString(task.Title)
 				}
 				if task.Status != "" {
-					b.WriteString(" (" + task.Status + ")")
+					b.WriteString(" (")
+					b.WriteString(task.Status)
+					b.WriteString(")")
 				}
 			}
+		}
+	}
+
+	// Surface the deterministic loop advisor's single next step so the agent
+	// resumes from disk state without re-deriving "where am I" each turn — this is
+	// the same result as `kez sdd next`, computed inline.
+	if ls, err := sdd.ReadLoopState(root, gitBranchForPrompt(root)); err == nil {
+		action := ls.Next()
+		b.WriteString("\n\n### Next step (from `kez sdd next`)\n\n")
+		b.WriteString(action.Summary)
+		if action.Command != "" {
+			b.WriteString("\n\n`")
+			b.WriteString(action.Command)
+			b.WriteString("`")
+		}
+		if action.Gate {
+			b.WriteString("\n\nThis is a human gate — stop and let the user decide.")
 		}
 	}
 	return b.String()
@@ -445,7 +495,10 @@ func projectGuidelines(cwd, gitRoot string) string {
 		}
 		content = truncateGuidelineContent(content, limit)
 		label := projectGuidelineLabel(match, gitRoot)
-		b.WriteString("\n\n## Project guidelines (" + label + ")\n\n" + content)
+		b.WriteString("\n\n## Project guidelines (")
+		b.WriteString(label)
+		b.WriteString(")\n\n")
+		b.WriteString(content)
 		totalUsed += len(content)
 	}
 	return b.String()

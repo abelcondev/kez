@@ -467,13 +467,10 @@ func TestMergedSkillsIncludesAgentsWithoutPlugins(t *testing.T) {
 	if len(dups) != 0 {
 		t.Fatalf("unexpected dups: %#v", dups)
 	}
-	// The agents skill must surface; the merged list also includes the binary's
-	// built-in skills (e.g. new-app), so assert by presence rather than exact set.
+	// The agents skill must surface even with no plugins configured. (The built-in
+	// overlay is currently empty, so assert by presence rather than exact set.)
 	if !containsSkillNamed(listed, "agents-skill") {
 		t.Fatalf("agents skill should surface with no plugins, got %#v", listed)
-	}
-	if !containsSkillNamed(listed, "new-app") {
-		t.Fatalf("built-in new-app skill should surface in the merged list, got %#v", listed)
 	}
 }
 

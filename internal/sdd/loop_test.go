@@ -115,6 +115,80 @@ func TestFeatureSlugDropsSequencePrefix(t *testing.T) {
 	}
 }
 
+func writeRaw(t *testing.T, root, rel, content string) {
+	t.Helper()
+	path := filepath.Join(root, "sdd", filepath.FromSlash(rel))
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("mkdir for %s: %v", rel, err)
+	}
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s: %v", rel, err)
+	}
+}
+
+func TestNextBranchIsPerProposal(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	writeRaw(t, root, "decisions/002-catalog.md", "---\ntype: Decision\ntitle: Catalog\ntags: []\nstatus: approved\n---\n")
+	writeRaw(t, root, "tasks/005-add-item.md", "---\ntype: Task\ntitle: Add item\ndecision: decisions/002-catalog.md\nstatus: pending\n---\n")
+
+	action := mustState(t, root, "main").Next()
+	if action.Command != "git checkout -b feat/002-catalog" {
+		t.Fatalf("branch should be per proposal (feat/002-catalog), got %q", action.Command)
+	}
+}
+
+func TestNextUIDecisionWithoutDesignWantsDesignGate(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	writeRaw(t, root, "decisions/002-caja-ui.md", "---\ntype: Decision\ntitle: Caja UI\ntags: [ui]\nstatus: approved\n---\n")
+	writeRaw(t, root, "tasks/003-caja-screen.md", "---\ntype: Task\ntitle: Caja screen\ndecision: decisions/002-caja-ui.md\nstatus: pending\n---\n")
+
+	// Even on a feature branch, a UI task with no approved design must design first.
+	action := mustState(t, root, "feat/002-caja-ui").Next()
+	if !strings.HasPrefix(action.Command, "kez sdd design decisions/002-caja-ui.md") {
+		t.Fatalf("want a design command, got %q", action.Command)
+	}
+}
+
+func TestNextDesignInReviewIsGate(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	writeRaw(t, root, "decisions/002-caja-ui.md", "---\ntype: Decision\ntitle: Caja UI\ntags: [ui]\nstatus: approved\n---\n")
+	writeRaw(t, root, "tasks/003-caja-screen.md", "---\ntype: Task\ntitle: Caja screen\ndecision: decisions/002-caja-ui.md\nstatus: pending\n---\n")
+	writeRaw(t, root, "designs/001-caja.md", "---\ntype: Design\ntitle: Caja\ndecision: decisions/002-caja-ui.md\nstatus: in-review\n---\n")
+
+	action := mustState(t, root, "feat/002-caja-ui").Next()
+	if !action.Gate || !strings.HasPrefix(action.Command, "kez sdd approve-design designs/001-caja") {
+		t.Fatalf("design in review must be an approve-design gate, got %+v", action)
+	}
+}
+
+func TestNextApprovedDesignUnblocksUITask(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	writeRaw(t, root, "decisions/002-caja-ui.md", "---\ntype: Decision\ntitle: Caja UI\ntags: [ui]\nstatus: approved\n---\n")
+	writeRaw(t, root, "tasks/003-caja-screen.md", "---\ntype: Task\ntitle: Caja screen\ndecision: decisions/002-caja-ui.md\nstatus: pending\n---\n")
+	writeRaw(t, root, "designs/001-caja.md", "---\ntype: Design\ntitle: Caja\ndecision: decisions/002-caja-ui.md\nstatus: approved\n---\n")
+
+	// On main: no more design gate, straight to the per-proposal branch.
+	if action := mustState(t, root, "main").Next(); action.Command != "git checkout -b feat/002-caja-ui" {
+		t.Fatalf("approved design should unblock branching, got %q", action.Command)
+	}
+	// On the feature branch: implement (no command).
+	if action := mustState(t, root, "feat/002-caja-ui").Next(); action.Command != "" {
+		t.Fatalf("approved design + feature branch should implement, got %q", action.Command)
+	}
+}
+
 func mustState(t *testing.T, root, branch string) LoopState {
 	t.Helper()
 	state, err := ReadLoopState(root, branch)

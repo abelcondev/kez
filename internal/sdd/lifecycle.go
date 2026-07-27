@@ -49,14 +49,26 @@ func Promote(root, titleOverride string, now time.Time) (string, error) {
 	var doc strings.Builder
 	doc.WriteString("---\n")
 	doc.WriteString("type: Decision\n")
-	doc.WriteString("title: " + title + "\n")
-	doc.WriteString("description: " + description + "\n")
-	doc.WriteString("tags: []\n")
-	doc.WriteString("status: approved\n")
-	doc.WriteString("timestamp: " + now.UTC().Format(time.RFC3339) + "\n")
+	doc.WriteString("title: ")
+	doc.WriteString(title)
+	doc.WriteString("\n")
+	doc.WriteString("description: ")
+	doc.WriteString(description)
+	doc.WriteString("\n")
+	tags := strings.TrimSpace(fm["tags"])
+	if tags == "" {
+		tags = "[]"
+	}
+	doc.WriteString("tags: ")
+	doc.WriteString(tags)
+	doc.WriteString("\nstatus: approved\n")
+	doc.WriteString("timestamp: ")
+	doc.WriteString(now.UTC().Format(time.RFC3339))
+	doc.WriteString("\n")
 	doc.WriteString("supersedes: []\n")
 	doc.WriteString("---\n\n")
-	doc.WriteString(strings.TrimSpace(relabelFirstHeading(body, "Proposal", "Decision")) + "\n")
+	doc.WriteString(strings.TrimSpace(relabelFirstHeading(body, "Proposal", "Decision")))
+	doc.WriteString("\n")
 	if err := os.WriteFile(filepath.Join(root, relPath), []byte(doc.String()), 0o644); err != nil {
 		return "", err
 	}
@@ -108,12 +120,18 @@ func AddTask(root, decisionRef, title string, now time.Time) (string, error) {
 	var doc strings.Builder
 	doc.WriteString("---\n")
 	doc.WriteString("type: Task\n")
-	doc.WriteString("title: " + title + "\n")
+	doc.WriteString("title: ")
+	doc.WriteString(title)
+	doc.WriteString("\n")
 	doc.WriteString("description: \n")
-	doc.WriteString("decision: " + ref + "\n")
+	doc.WriteString("decision: ")
+	doc.WriteString(ref)
+	doc.WriteString("\n")
 	doc.WriteString("tags: []\n")
 	doc.WriteString("status: pending\n")
-	doc.WriteString("timestamp: " + now.UTC().Format(time.RFC3339) + "\n")
+	doc.WriteString("timestamp: ")
+	doc.WriteString(now.UTC().Format(time.RFC3339))
+	doc.WriteString("\n")
 	doc.WriteString("---\n\n")
 	doc.WriteString("# Acceptance criteria\n\n")
 	doc.WriteString("```gherkin\n")
@@ -128,6 +146,162 @@ func AddTask(root, decisionRef, title string, now time.Time) (string, error) {
 		return "", err
 	}
 	return relPath, nil
+}
+
+// designBody is the starting checklist for a design artifact: the loop is
+// design-tool-agnostic, so it records links + screenshots + the components used
+// rather than owning a specific tool.
+const designBody = `# Design
+
+Link the source of truth and capture the result so a reviewer can approve without
+opening the tool.
+
+## Source
+
+- Tool: <Penpot | Figma>
+- File / board: <url>
+- Frames: <list the frames this design covers>
+
+## Screens
+
+Embed or link a screenshot of each screen/state (empty, loading, error, success).
+
+## Components used
+
+List the design-system / component-library components each screen is built from
+(see the UI conventions in ` + "`sdd/index.md`" + `). Flag any primitive that is
+missing and must be added to the library first — do not hand-roll it in the screen.
+
+## Notes
+
+Interactions, edge cases, and anything a reviewer must check before approval.
+`
+
+// CompleteTask marks a task done and appends a line to log.md, atomically closing
+// it so callers don't hand-edit frontmatter. taskRef accepts "tasks/NNN-slug.md",
+// "NNN-slug.md", or "NNN-slug". Returns the task path relative to root.
+func CompleteTask(root, taskRef string, now time.Time) (string, error) {
+	base := filepath.Join(root, DirName)
+	path, err := resolveArtifactPath(base, "tasks", taskRef)
+	if err != nil {
+		return "", err
+	}
+	fm := readFrontmatter(path)
+	if err := setFrontmatterStatus(path, "done"); err != nil {
+		return "", err
+	}
+	name := strings.TrimSuffix(filepath.Base(path), ".md")
+	logLine := fmt.Sprintf("- %s — Task %s done.", now.UTC().Format("2006-01-02"), name)
+	if title := strings.TrimSpace(fm["title"]); title != "" {
+		logLine = fmt.Sprintf("- %s — Task %s (%s) done.", now.UTC().Format("2006-01-02"), name, title)
+	}
+	if err := appendLine(filepath.Join(base, "log.md"), logLine); err != nil {
+		return "", err
+	}
+	return filepath.Join(DirName, "tasks", name+".md"), nil
+}
+
+// AddDesign scaffolds designs/NNN-slug.md, an in-review design linked to
+// decisionRef. It is the UI gate's artifact: a task on a UI decision may not be
+// implemented until its design is approved. Returns the path relative to root.
+func AddDesign(root, decisionRef, title string, now time.Time) (string, error) {
+	title = strings.TrimSpace(title)
+	if title == "" {
+		return "", fmt.Errorf("a design title is required")
+	}
+	base := filepath.Join(root, DirName)
+	designsDir := filepath.Join(base, "designs")
+	if err := os.MkdirAll(designsDir, 0o755); err != nil {
+		return "", err
+	}
+	num, err := nextNumber(designsDir)
+	if err != nil {
+		return "", err
+	}
+	fileName := num + "-" + slugify(title) + ".md"
+	relPath := filepath.Join(DirName, "designs", fileName)
+
+	ref := strings.TrimSpace(decisionRef)
+	if ref == "" {
+		ref = "decisions/NNN-name.md"
+	}
+
+	var doc strings.Builder
+	doc.WriteString("---\ntype: Design\ntitle: ")
+	doc.WriteString(title)
+	doc.WriteString("\ndescription: \ndecision: ")
+	doc.WriteString(ref)
+	doc.WriteString("\ntags: [ui]\nstatus: in-review\ntimestamp: ")
+	doc.WriteString(now.UTC().Format(time.RFC3339))
+	doc.WriteString("\n---\n\n")
+	doc.WriteString(designBody)
+	if err := os.WriteFile(filepath.Join(root, relPath), []byte(doc.String()), 0o644); err != nil {
+		return "", err
+	}
+	return relPath, nil
+}
+
+// ApproveDesign flips a design artifact from in-review to approved and logs it,
+// clearing the UI gate for the tasks of its decision. designRef accepts the same
+// forms as CompleteTask. Returns the design path relative to root.
+func ApproveDesign(root, designRef string, now time.Time) (string, error) {
+	base := filepath.Join(root, DirName)
+	path, err := resolveArtifactPath(base, "designs", designRef)
+	if err != nil {
+		return "", err
+	}
+	fm := readFrontmatter(path)
+	if err := setFrontmatterStatus(path, "approved"); err != nil {
+		return "", err
+	}
+	name := strings.TrimSuffix(filepath.Base(path), ".md")
+	logLine := fmt.Sprintf("- %s — Design %s approved.", now.UTC().Format("2006-01-02"), name)
+	if title := strings.TrimSpace(fm["title"]); title != "" {
+		logLine = fmt.Sprintf("- %s — Design %s (%s) approved.", now.UTC().Format("2006-01-02"), name, title)
+	}
+	if err := appendLine(filepath.Join(base, "log.md"), logLine); err != nil {
+		return "", err
+	}
+	return filepath.Join(DirName, "designs", name+".md"), nil
+}
+
+// resolveArtifactPath resolves a user-supplied artifact reference to an existing
+// file under <base>/<subdir>, accepting "<subdir>/NNN-slug.md", "NNN-slug.md", or
+// "NNN-slug". It errors if the reference is empty or the file is absent.
+func resolveArtifactPath(base, subdir, ref string) (string, error) {
+	name := normalizeRef(ref)
+	if name == "" {
+		return "", fmt.Errorf("a %s reference is required", strings.TrimSuffix(subdir, "s"))
+	}
+	path := filepath.Join(base, subdir, name+".md")
+	if _, err := os.Stat(path); err != nil {
+		return "", fmt.Errorf("%s not found: %s", strings.TrimSuffix(subdir, "s"), filepath.ToSlash(filepath.Join(subdir, name+".md")))
+	}
+	return path, nil
+}
+
+// setFrontmatterStatus rewrites the `status:` line inside a markdown file's
+// frontmatter in place, preserving every other line. It errors if the file has
+// no frontmatter or no status field.
+func setFrontmatterStatus(path, status string) error {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return err
+	}
+	lines := strings.Split(strings.ReplaceAll(string(raw), "\r\n", "\n"), "\n")
+	if len(lines) == 0 || strings.TrimSpace(lines[0]) != "---" {
+		return fmt.Errorf("no frontmatter in %s", path)
+	}
+	for i := 1; i < len(lines); i++ {
+		if strings.TrimSpace(lines[i]) == "---" {
+			break
+		}
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), "status:") {
+			lines[i] = "status: " + status
+			return os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644)
+		}
+	}
+	return fmt.Errorf("no status field in %s", path)
 }
 
 // nextNumber returns the next zero-padded 3-digit sequence for dir, based on the
@@ -236,7 +410,10 @@ func appendLine(path, line string) error {
 		return err
 	}
 	defer f.Close()
-	_, err = f.WriteString(line + "\n")
+	if _, err = f.WriteString(line); err != nil {
+		return err
+	}
+	_, err = f.WriteString("\n")
 	return err
 }
 

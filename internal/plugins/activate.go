@@ -309,8 +309,8 @@ func mergeSkills(defaultDir string, pluginRoots []string, keepContent bool) ([]s
 	}
 	// Load with content, then overlay the binary's built-in skills (disk wins a
 	// name clash) and strip bodies for listing callers. Built-ins ship inside the
-	// kez binary, so a curated workflow like new-app is always available even
-	// when no skills directory is installed.
+	// kez binary so any curated workflow is available even when no skills
+	// directory is installed (the built-in set is currently empty).
 	merged, dups, _ := skills.LoadFromRoots(roots)
 	return skills.MergeBuiltins(merged, keepContent), dups
 }

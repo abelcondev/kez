@@ -110,21 +110,17 @@ func TestRunSkillsListJSON(t *testing.T) {
 	if err := json.Unmarshal(stdout.Bytes(), &payload); err != nil {
 		t.Fatalf("invalid JSON: %v\n%s", err, stdout.String())
 	}
-	// The disk "demo" skill plus the binary's built-in skills (e.g. new-app), so
-	// locate the disk skill by name rather than assuming it is the only entry.
+	// Locate the disk "demo" skill by name rather than assuming it is the only
+	// entry (the built-in overlay may add more in the future; today it is empty).
 	var demo *struct {
 		Name        string `json:"name"`
 		Description string `json:"description"`
 		Path        string `json:"path"`
 		Content     string `json:"content"`
 	}
-	sawBuiltin := false
 	for i := range payload.Skills {
-		switch payload.Skills[i].Name {
-		case "demo":
+		if payload.Skills[i].Name == "demo" {
 			demo = &payload.Skills[i]
-		case "new-app":
-			sawBuiltin = true
 		}
 	}
 	if demo == nil {
@@ -136,15 +132,12 @@ func TestRunSkillsListJSON(t *testing.T) {
 	if demo.Path == "" {
 		t.Fatalf("path should be present")
 	}
-	if !sawBuiltin {
-		t.Fatalf("expected the built-in new-app skill in the list, got %#v", payload.Skills)
-	}
 }
 
-// TestRunSkillsEmptyDirStillListsBuiltins verifies the whole point of built-in
-// skills: with no disk skills installed at all, the binary's built-ins (e.g.
-// new-app) are still listed, so the workflow is always available.
-func TestRunSkillsEmptyDirStillListsBuiltins(t *testing.T) {
+// TestRunSkillsEmptyDirIsGraceful verifies that with no disk skills and an empty
+// built-in set the listing degrades cleanly (new-app was retired; the SDD loop
+// guidance now lives in the advisor + sdd/index.md, not a built-in skill).
+func TestRunSkillsEmptyDirIsGraceful(t *testing.T) {
 	isolateCLIAgentsHome(t)
 	var stdout, stderr bytes.Buffer
 	exit := runWithDeps([]string{"skills", "list"}, &stdout, &stderr, appDeps{
@@ -153,8 +146,8 @@ func TestRunSkillsEmptyDirStillListsBuiltins(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("exit = %d, stderr = %s", exit, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "new-app") {
-		t.Fatalf("built-in new-app should be listed even with no disk skills, got:\n%s", stdout.String())
+	if !strings.Contains(stdout.String(), "No skills found") {
+		t.Fatalf("empty skills set should report no skills, got:\n%s", stdout.String())
 	}
 }
 

@@ -72,7 +72,8 @@ func SaveDraft(options SaveOptions) (SavedSpec, error) {
 			}
 			return SavedSpec{}, fmt.Errorf("create spec file: %w", err)
 		}
-		if _, err := file.WriteString(plan + "\n"); err != nil {
+		contents := plan + "\n"
+		if _, err := file.WriteString(contents); err != nil {
 			_ = file.Close()
 			_ = os.Remove(path)
 			return SavedSpec{}, fmt.Errorf("write spec file: %w", err)
