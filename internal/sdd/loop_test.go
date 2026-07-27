@@ -54,6 +54,9 @@ func TestNextNoDecisionsProposesDiscovery(t *testing.T) {
 	if !strings.HasPrefix(action.Command, "kez sdd propose") {
 		t.Fatalf("want a propose command, got %q", action.Command)
 	}
+	if action.Skill != "sdd-discovery" {
+		t.Fatalf("discovery phase skill = %q, want sdd-discovery", action.Skill)
+	}
 }
 
 func TestNextPendingTaskOnProtectedBranchWantsFeatureBranch(t *testing.T) {
@@ -84,6 +87,23 @@ func TestNextPendingTaskOnFeatureBranchImplements(t *testing.T) {
 	}
 	if !strings.Contains(action.Summary, "002-owner-auth") {
 		t.Fatalf("summary = %q", action.Summary)
+	}
+	if action.Skill != "sdd-implement" {
+		t.Fatalf("implement phase skill = %q, want sdd-implement", action.Skill)
+	}
+}
+
+func TestNextMechanicalStepsNameNoSkill(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	writeArtifact(t, root, "decisions/001-architecture.md", "Decision", "Architecture", "approved")
+	writeArtifact(t, root, "tasks/002-owner-auth.md", "Task", "Owner auth", "pending")
+
+	// Branching off a protected branch is mechanical git — no phase skill.
+	if action := mustState(t, root, "main").Next(); action.Skill != "" {
+		t.Fatalf("branch step skill = %q, want none", action.Skill)
 	}
 }
 

@@ -33,10 +33,14 @@ type LoopState struct {
 
 // NextAction is the one recommended step given a LoopState. Gate marks a step
 // that hands control to the human (review/approval) rather than doing work.
+// Skill names the built-in phase skill the agent should load before acting on
+// this step (the deterministic router that makes skill-loading predictable); it
+// is "" for mechanical steps (init, branch) and human gates, which need no skill.
 type NextAction struct {
 	Summary string
 	Command string
 	Gate    bool
+	Skill   string
 }
 
 // ReadLoopState inspects <root>/sdd plus the given git branch (pass "" if
@@ -208,6 +212,7 @@ func (st LoopState) Next() NextAction {
 		return NextAction{
 			Summary: "Nothing recorded yet. Draft the first proposal (start with discovery — the what & why).",
 			Command: `kez sdd propose "Discovery: <who uses it, the one flow that must not fail, constraints>"`,
+			Skill:   "sdd-discovery",
 		}
 	}
 	if len(st.PendingTasks) > 0 {
@@ -216,6 +221,7 @@ func (st LoopState) Next() NextAction {
 			return NextAction{
 				Summary: "Task " + task.Name + " is UI work with no approved design. Design it first in Penpot/Figma (via MCP), record it, then implement.",
 				Command: `kez sdd design ` + st.FirstTaskDecision + ` "<screen or flow>"`,
+				Skill:   "sdd-design",
 			}
 		}
 		if protectedBranches[st.Branch] {
@@ -229,7 +235,8 @@ func (st LoopState) Next() NextAction {
 			label += " — " + task.Title
 		}
 		return NextAction{
-			Summary: "Implement pending task " + label + " (TDD: red → green), then close it with `kez sdd done " + task.Name + "`. One PR per proposal.",
+			Summary: "Implement pending task " + label + " (TDD: red → green), review, then close it with `kez sdd done " + task.Name + "`. One PR per proposal.",
+			Skill:   "sdd-implement",
 		}
 	}
 	ref := st.LatestDecision
@@ -239,6 +246,7 @@ func (st LoopState) Next() NextAction {
 	return NextAction{
 		Summary: "No open work. Add a task to the latest decision, or propose the next thing.",
 		Command: `kez sdd task ` + ref + ` "<task title>"`,
+		Skill:   "sdd-task",
 	}
 }
 

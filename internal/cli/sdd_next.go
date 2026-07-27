@@ -35,6 +35,9 @@ func printNextAction(stdout io.Writer, action sdd.NextAction) {
 	if action.Command != "" {
 		fmt.Fprintf(stdout, "         %s\n", action.Command)
 	}
+	if action.Skill != "" {
+		fmt.Fprintf(stdout, "         skill: %s\n", action.Skill)
+	}
 }
 
 // currentGitBranch returns the checked-out branch name by reading <root>/.git/HEAD,

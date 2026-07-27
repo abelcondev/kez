@@ -137,7 +137,7 @@ func TestRunSkillsListJSON(t *testing.T) {
 // TestRunSkillsEmptyDirIsGraceful verifies that with no disk skills and an empty
 // built-in set the listing degrades cleanly (new-app was retired; the SDD loop
 // guidance now lives in the advisor + sdd/index.md, not a built-in skill).
-func TestRunSkillsEmptyDirIsGraceful(t *testing.T) {
+func TestRunSkillsMissingDirListsBuiltins(t *testing.T) {
 	isolateCLIAgentsHome(t)
 	var stdout, stderr bytes.Buffer
 	exit := runWithDeps([]string{"skills", "list"}, &stdout, &stderr, appDeps{
@@ -146,8 +146,11 @@ func TestRunSkillsEmptyDirIsGraceful(t *testing.T) {
 	if exit != 0 {
 		t.Fatalf("exit = %d, stderr = %s", exit, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "No skills found") {
-		t.Fatalf("empty skills set should report no skills, got:\n%s", stdout.String())
+	// A missing disk dir is graceful (no crash, exit 0) and the built-in SDD phase
+	// skills are always available, so the list is never empty anymore.
+	out := stdout.String()
+	if !strings.Contains(out, "sdd-discovery") || !strings.Contains(out, "builtin:sdd-discovery") {
+		t.Fatalf("missing skills dir should still list the built-in SDD skills, got:\n%s", out)
 	}
 }
 

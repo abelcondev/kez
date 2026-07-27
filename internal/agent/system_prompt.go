@@ -449,6 +449,11 @@ func sddContext(cwd string) string {
 			b.WriteString(action.Command)
 			b.WriteString("`")
 		}
+		if action.Skill != "" {
+			b.WriteString("\n\nLoad the `")
+			b.WriteString(action.Skill)
+			b.WriteString("` skill FIRST (call the skill tool with that exact name) and follow its guidance for this phase — it carries the dense, phase-specific rules that this summary only points at.")
+		}
 		if action.Gate {
 			b.WriteString("\n\nThis is a human gate — stop and let the user decide.")
 		}
