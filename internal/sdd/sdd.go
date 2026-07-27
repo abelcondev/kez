@@ -65,9 +65,10 @@ func Scaffold(root string) (created, skipped []string, err error) {
 
 // TaskInfo is a single task artifact's summary, read from its frontmatter.
 type TaskInfo struct {
-	Name   string // file name without extension, e.g. "003-auth-signup-ui"
-	Title  string
-	Status string
+	Name     string // file name without extension, e.g. "003-auth-signup-ui"
+	Title    string
+	Status   string
+	Decision string // decision ref this task links to (frontmatter `decision:`), or ""
 }
 
 // Status is a snapshot of the SDD knowledge base for reporting.
@@ -102,9 +103,10 @@ func ReadStatus(root string) (Status, error) {
 	for _, path := range tasks {
 		fm := readFrontmatter(path)
 		st.Tasks = append(st.Tasks, TaskInfo{
-			Name:   strings.TrimSuffix(filepath.Base(path), ".md"),
-			Title:  fm["title"],
-			Status: fm["status"],
+			Name:     strings.TrimSuffix(filepath.Base(path), ".md"),
+			Title:    fm["title"],
+			Status:   fm["status"],
+			Decision: fm["decision"],
 		})
 	}
 	sort.Slice(st.Tasks, func(i, j int) bool { return st.Tasks[i].Name < st.Tasks[j].Name })
@@ -170,6 +172,11 @@ func readFrontmatter(path string) map[string]string {
 			continue
 		}
 		out[key] = value
+	}
+	// Frontmatter is best-effort: a read error just yields whatever we parsed so
+	// far, but surface the check so a truncated read isn't silently ignored.
+	if err := scanner.Err(); err != nil {
+		return out
 	}
 	return out
 }

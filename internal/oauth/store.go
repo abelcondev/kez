@@ -495,7 +495,8 @@ func FormatStatuses(statuses []Status) string {
 		}
 		b.WriteString("logged in")
 		if st.Account != "" {
-			b.WriteString(" as " + st.Account)
+			b.WriteString(" as ")
+			b.WriteString(st.Account)
 		}
 		if st.HasRefreshToken {
 			b.WriteString(" (refreshable)")

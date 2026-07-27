@@ -11,50 +11,28 @@ func findSkill(list []Skill, name string) (Skill, bool) {
 	return Skill{}, false
 }
 
-func TestBuiltinIncludesNewApp(t *testing.T) {
-	built := Builtin()
-	newApp, ok := findSkill(built, "new-app")
-	if !ok {
-		t.Fatalf("Builtin() must include new-app, got %#v", built)
-	}
-	if newApp.Description == "" {
-		t.Error("new-app must carry a description so the model can trigger it")
-	}
-	if newApp.Content == "" {
-		t.Error("new-app must carry a body served from the embedded FS")
-	}
-	if newApp.Path != "builtin:new-app" {
-		t.Errorf("new-app Path = %q, want builtin:new-app", newApp.Path)
+func TestBuiltinIsEmptyByDefault(t *testing.T) {
+	// new-app was retired; the loop guidance now lives in the SDD advisor
+	// (`kez sdd next`) plus each project's sdd/index.md. The built-in set is empty
+	// but the machinery still compiles (see the .keep placeholder in builtin/).
+	if built := Builtin(); len(built) != 0 {
+		t.Fatalf("Builtin() = %#v, want empty", built)
 	}
 }
 
-func TestMergeBuiltinsAddsWhenAbsent(t *testing.T) {
-	merged := MergeBuiltins(nil, true)
-	if _, ok := findSkill(merged, "new-app"); !ok {
-		t.Fatalf("MergeBuiltins(nil) must surface built-ins, got %#v", merged)
-	}
-}
-
-func TestMergeBuiltinsDiskWinsNameClash(t *testing.T) {
-	disk := []Skill{{Name: "new-app", Description: "user override", Content: "disk body", Path: "/disk/new-app/SKILL.md"}}
+func TestMergeBuiltinsPassesThroughDiskSkills(t *testing.T) {
+	disk := []Skill{{Name: "custom", Description: "user skill", Content: "disk body", Path: "/disk/custom/SKILL.md"}}
 	merged := MergeBuiltins(disk, true)
 
-	got, ok := findSkill(merged, "new-app")
+	got, ok := findSkill(merged, "custom")
 	if !ok {
-		t.Fatal("new-app missing after merge")
+		t.Fatalf("MergeBuiltins dropped the disk skill, got %#v", merged)
 	}
-	if got.Path != "/disk/new-app/SKILL.md" || got.Content != "disk body" {
-		t.Errorf("disk skill must win the name clash, got %#v", got)
+	if got.Path != "/disk/custom/SKILL.md" || got.Content != "disk body" {
+		t.Errorf("disk skill must pass through unchanged, got %#v", got)
 	}
-	// No duplicate entry for the shadowed built-in.
-	count := 0
-	for _, skill := range merged {
-		if skill.Name == "new-app" {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Errorf("expected exactly one new-app after override, got %d", count)
+	if len(merged) != len(disk) {
+		t.Errorf("MergeBuiltins added %d entries, want only the %d disk skills", len(merged)-len(disk), len(disk))
 	}
 }
 

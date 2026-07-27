@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -34,8 +35,14 @@ func runSDD(args []string, stdout io.Writer, stderr io.Writer, deps appDeps) int
 		return runSDDPropose(root, args[1:], stdout, stderr, deps)
 	case "approve":
 		return runSDDApprove(root, args[1:], stdout, stderr)
+	case "design":
+		return runSDDDesign(root, args[1:], stdout, stderr)
+	case "approve-design":
+		return runSDDApproveDesign(root, args[1:], stdout, stderr)
 	case "task":
 		return runSDDTask(root, args[1:], stdout, stderr)
+	case "done":
+		return runSDDDone(root, args[1:], stdout, stderr)
 	case "next":
 		return runSDDNext(root, stdout, stderr)
 	default:
@@ -75,10 +82,38 @@ func runSDDInit(root string, stdout io.Writer, stderr io.Writer) int {
 	for _, s := range skipped {
 		fmt.Fprintf(stdout, "  = %s (kept)\n", s)
 	}
+
+	// Turn on the branch guard from the seed so foundations and every later pass
+	// land via a feature branch + PR (one PR per proposal), and the system prompt
+	// states the policy from the first turn. The marker travels with the repo.
+	if wrote, err := writeRequireBranchMarker(root); err != nil {
+		fmt.Fprintf(stderr, "warning: could not enable the branch guard: %v\n", err)
+	} else if wrote {
+		fmt.Fprintf(stdout, "  + %s (branch guard on: feature branch + PR required)\n", filepath.Join(".kez", "require-branch"))
+	}
+
 	if len(created) > 0 {
 		fmt.Fprintln(stdout, "\nNext: draft a proposal in sdd/proposal.md, then promote it to sdd/decisions/NNN-name.md on approval.")
 	}
 	return exitSuccess
+}
+
+// writeRequireBranchMarker creates <root>/.kez/require-branch (empty) to opt the
+// repo into the feature-branch guard. It reports whether it created the marker;
+// an already-present marker is left untouched.
+func writeRequireBranchMarker(root string) (bool, error) {
+	dir := filepath.Join(root, ".kez")
+	marker := filepath.Join(dir, "require-branch")
+	if _, err := os.Stat(marker); err == nil {
+		return false, nil
+	}
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return false, err
+	}
+	if err := os.WriteFile(marker, nil, 0o644); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func runSDDStatus(root string, stdout io.Writer, stderr io.Writer) int {
@@ -166,6 +201,57 @@ func runSDDTask(root string, args []string, stdout io.Writer, stderr io.Writer) 
 	return exitSuccess
 }
 
+// runSDDDesign scaffolds an in-review UI design linked to a decision:
+//
+//	kez sdd design <decision-ref> <title...>
+func runSDDDesign(root string, args []string, stdout io.Writer, stderr io.Writer) int {
+	positional := nonFlagArgs(args)
+	if len(positional) < 2 {
+		return writeExecUsageError(stderr, "usage: kez sdd design <decision-ref> <title...>")
+	}
+	decisionRef := positional[0]
+	title := strings.Join(positional[1:], " ")
+	rel, err := sdd.AddDesign(root, decisionRef, title, time.Now())
+	if err != nil {
+		return writeAppError(stderr, err.Error(), exitCrash)
+	}
+	fmt.Fprintf(stdout, "Created design %s (in-review, linked to %s). Build it in Penpot/Figma, fill in the frames + screenshots, then run `kez sdd approve-design %s`.\n", rel, decisionRef, strings.TrimSuffix(filepath.Base(rel), ".md"))
+	return exitSuccess
+}
+
+// runSDDApproveDesign flips a design from in-review to approved, clearing the UI
+// gate for its decision's tasks:
+//
+//	kez sdd approve-design <design-ref>
+func runSDDApproveDesign(root string, args []string, stdout io.Writer, stderr io.Writer) int {
+	positional := nonFlagArgs(args)
+	if len(positional) < 1 {
+		return writeExecUsageError(stderr, "usage: kez sdd approve-design <design-ref>")
+	}
+	rel, err := sdd.ApproveDesign(root, positional[0], time.Now())
+	if err != nil {
+		return writeAppError(stderr, err.Error(), exitCrash)
+	}
+	fmt.Fprintf(stdout, "Approved design %s, appended sdd/log.md. UI tasks for its decision are unblocked.\n", rel)
+	return exitSuccess
+}
+
+// runSDDDone marks a task done and appends a line to log.md in one step:
+//
+//	kez sdd done <task-ref>
+func runSDDDone(root string, args []string, stdout io.Writer, stderr io.Writer) int {
+	positional := nonFlagArgs(args)
+	if len(positional) < 1 {
+		return writeExecUsageError(stderr, "usage: kez sdd done <task-ref>")
+	}
+	rel, err := sdd.CompleteTask(root, positional[0], time.Now())
+	if err != nil {
+		return writeAppError(stderr, err.Error(), exitCrash)
+	}
+	fmt.Fprintf(stdout, "Marked %s done, appended sdd/log.md.\n", rel)
+	return exitSuccess
+}
+
 // runSDDPropose drafts sdd/proposal.md from a natural-language description by
 // forwarding a seeded prompt to the normal exec machinery (provider, tools,
 // sandbox). The agent writes the proposal; it is told not to write code.
@@ -192,7 +278,8 @@ func runSDDPropose(root string, args []string, stdout io.Writer, stderr io.Write
 	prompt := "Draft an OKF Spec-Driven Development proposal for the request below and write it to sdd/proposal.md " +
 		"(run the equivalent of `kez sdd init` first if sdd/ does not exist). Follow the existing proposal.md frontmatter " +
 		"(type: Proposal, a concise title, a one-line description, status: in-review) and the # Proposal / # Context / # Acceptance " +
-		"sections. Describe the WHAT and WHY, not the HOW. Do NOT write or modify any code — only sdd/proposal.md.\n\nRequest: " + description
+		"sections. If the work involves user-facing screens, set `tags: [ui]` so the loop requires an approved design before UI code. " +
+		"Describe the WHAT and WHY, not the HOW. Do NOT write or modify any code — only sdd/proposal.md.\n\nRequest: " + description
 	// Forward flags (e.g. --model, -C) unchanged; append the built prompt last.
 	execArgs := append(passthroughFlags(args), prompt)
 	return runExec(execArgs, stdout, stderr, deps)
@@ -262,21 +349,26 @@ const sddHelp = `kez sdd — native OKF Spec-Driven Development knowledge base.
 Persistent, versioned spec artifacts under <workspace>/sdd:
   proposal.md   the current, in-review proposal (transient; cleared on approval)
   decisions/    approved, numbered architectural decisions (historical)
+  designs/      approved UI designs (frames + screenshots) — the gate before UI code
   tasks/        units of work with Gherkin acceptance criteria
   log.md        append-only history
 
-Lifecycle: propose → approve (→ decision) → task → implement, tracked in log.md.
-The same loop covers everything — discovery, architecture, foundations, and each
-feature are all passes through it. Run "kez sdd next" any time to see the one
-recommended next step from disk state.
+Lifecycle: propose → approve (→ decision) → [design → approve-design, for UI] →
+task → branch → implement → done, tracked in log.md. The same loop covers
+everything — discovery, architecture, foundations, and each feature are all passes
+through it. init turns on the feature-branch guard (one PR per proposal). Run
+"kez sdd next" any time to see the one recommended next step from disk state.
 
 Usage:
-  kez sdd init                       Scaffold the sdd/ knowledge base (idempotent)
-  kez sdd propose "<what & why>"     Draft sdd/proposal.md via the agent (writes no code)
-  kez sdd approve [--title <text>]   Promote proposal.md → decisions/NNN, update log + index
-  kez sdd task <decision-ref> <t…>   Scaffold a pending task (Gherkin) linked to a decision
-  kez sdd status                     Report decisions, tasks, and the current loop position
-  kez sdd next                       Print the single recommended next step (resumable)
+  kez sdd init                        Scaffold sdd/ + enable the branch guard (idempotent)
+  kez sdd propose "<what & why>"      Draft sdd/proposal.md via the agent (writes no code)
+  kez sdd approve [--title <text>]    Promote proposal.md → decisions/NNN, update log + index
+  kez sdd design <decision-ref> <t…>  Scaffold an in-review UI design linked to a decision
+  kez sdd approve-design <design-ref> Approve a design, unblocking its decision's UI tasks
+  kez sdd task <decision-ref> <t…>    Scaffold a pending task (Gherkin) linked to a decision
+  kez sdd done <task-ref>             Mark a task done and append to log.md
+  kez sdd status                      Report decisions, tasks, and the current loop position
+  kez sdd next                        Print the single recommended next step (resumable)
 
 Flags:
   -C, --cwd <dir>   Operate on the workspace containing <dir> (default: current directory)

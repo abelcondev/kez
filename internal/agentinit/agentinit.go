@@ -43,20 +43,28 @@ func FormatFacts(info repoinfo.Info) string {
 		b.WriteString(fmt.Sprintf("- Primary language: %s (of %d detected)\n", info.PrimaryLanguage, info.LanguageCount))
 	}
 	if langs := topLanguages(info.Languages, 5); langs != "" {
-		b.WriteString("- Languages: " + langs + "\n")
+		b.WriteString("- Languages: ")
+		b.WriteString(langs)
+		b.WriteString("\n")
 	}
 	b.WriteString(fmt.Sprintf("- Size: ~%d files, ~%d LOC, max dir depth %d\n", info.FileCount, info.LOCEstimate, info.MaxDepth))
 	if info.WorkspaceType != "" && info.WorkspaceType != "none" {
 		b.WriteString(fmt.Sprintf("- Workspace: %s (%d packages)\n", info.WorkspaceType, info.WorkspacePackageCount))
 	}
 	if len(info.BuildTools) > 0 {
-		b.WriteString("- Build tools: " + strings.Join(info.BuildTools, ", ") + "\n")
+		b.WriteString("- Build tools: ")
+		b.WriteString(strings.Join(info.BuildTools, ", "))
+		b.WriteString("\n")
 	}
 	if len(info.TestTools) > 0 {
-		b.WriteString("- Test tools: " + strings.Join(info.TestTools, ", ") + "\n")
+		b.WriteString("- Test tools: ")
+		b.WriteString(strings.Join(info.TestTools, ", "))
+		b.WriteString("\n")
 	}
 	if len(info.CICD) > 0 {
-		b.WriteString("- CI/CD: " + strings.Join(info.CICD, ", ") + "\n")
+		b.WriteString("- CI/CD: ")
+		b.WriteString(strings.Join(info.CICD, ", "))
+		b.WriteString("\n")
 	}
 	if info.HasGit {
 		git := "- Git: yes"
@@ -66,7 +74,8 @@ func FormatFacts(info repoinfo.Info) string {
 		if info.Contributors90d != nil {
 			git += fmt.Sprintf(", %d contributors (90d)", *info.Contributors90d)
 		}
-		b.WriteString(git + "\n")
+		b.WriteString(git)
+		b.WriteString("\n")
 	}
 	return b.String()
 }

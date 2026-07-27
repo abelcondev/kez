@@ -22,6 +22,13 @@ type LoopState struct {
 	LatestDecision string // e.g. "decisions/002-architecture.md", or "" if none
 	PendingTasks   []TaskInfo
 	Branch         string
+
+	// Design gate. A UI-bearing decision must have an approved design artifact
+	// under sdd/designs/ before its tasks may be implemented in code.
+	DesignInReview     string // a design artifact awaiting the gate ("designs/NNN-slug"), or ""
+	FirstTaskDecision  string // decision ref PendingTasks[0] links to (verbatim), or ""
+	FirstTaskNeedsUI   bool   // that decision is tagged UI, so a design is required first
+	FirstTaskHasDesign bool   // an approved design already exists for that decision
 }
 
 // NextAction is the one recommended step given a LoopState. Gate marks a step
@@ -74,12 +81,98 @@ func ReadLoopState(root, branch string) (LoopState, error) {
 			continue
 		}
 		st.PendingTasks = append(st.PendingTasks, TaskInfo{
-			Name:   strings.TrimSuffix(filepath.Base(path), ".md"),
-			Title:  fm["title"],
-			Status: status,
+			Name:     strings.TrimSuffix(filepath.Base(path), ".md"),
+			Title:    fm["title"],
+			Status:   status,
+			Decision: strings.TrimSpace(fm["decision"]),
 		})
 	}
+
+	// A design awaiting its gate blocks regardless of pending tasks; an approved
+	// design for the first pending task's decision satisfies the UI gate.
+	designInReview, approvedByDecision := scanDesigns(base)
+	st.DesignInReview = designInReview
+	if len(st.PendingTasks) > 0 {
+		st.FirstTaskDecision = st.PendingTasks[0].Decision
+		if st.FirstTaskDecision != "" {
+			st.FirstTaskNeedsUI = decisionIsUI(base, st.FirstTaskDecision)
+			st.FirstTaskHasDesign = approvedByDecision[normalizeRef(st.FirstTaskDecision)]
+		}
+	}
 	return st, nil
+}
+
+// scanDesigns reports the first design artifact awaiting the gate (status
+// in-review) and the set of decisions (normalized refs) that already have an
+// approved design. A missing designs/ dir yields no gate and an empty set.
+func scanDesigns(base string) (inReview string, approvedByDecision map[string]bool) {
+	approvedByDecision = map[string]bool{}
+	paths, err := listArtifacts(filepath.Join(base, "designs"))
+	if err != nil {
+		return "", approvedByDecision
+	}
+	for _, p := range paths {
+		fm := readFrontmatter(p)
+		name := strings.TrimSuffix(filepath.Base(p), ".md")
+		switch strings.TrimSpace(fm["status"]) {
+		case "approved", "done", "completed":
+			if dec := normalizeRef(fm["decision"]); dec != "" {
+				approvedByDecision[dec] = true
+			}
+		case "in-review":
+			if inReview == "" {
+				inReview = "designs/" + name
+			}
+		}
+	}
+	return inReview, approvedByDecision
+}
+
+// decisionIsUI reports whether the decision named by decisionRef is UI-bearing —
+// either `ui: true` in its frontmatter or a "ui" tag — so the loop requires an
+// approved design before its tasks are implemented.
+func decisionIsUI(base, decisionRef string) bool {
+	name := normalizeRef(decisionRef)
+	if name == "" {
+		return false
+	}
+	fm := readFrontmatter(filepath.Join(base, "decisions", name+".md"))
+	if isTruthy(fm["ui"]) {
+		return true
+	}
+	return hasTag(fm["tags"], "ui")
+}
+
+// normalizeRef reduces an artifact reference to its bare stem: "decisions/002-x.md",
+// "002-x.md", and "002-x" all normalize to "002-x".
+func normalizeRef(ref string) string {
+	ref = strings.TrimSpace(filepath.ToSlash(strings.TrimSpace(ref)))
+	if ref == "" {
+		return ""
+	}
+	if i := strings.LastIndex(ref, "/"); i >= 0 {
+		ref = ref[i+1:]
+	}
+	return strings.TrimSuffix(ref, ".md")
+}
+
+// hasTag reports whether a frontmatter tags value like "[ui, caja]" contains want.
+func hasTag(tags, want string) bool {
+	for _, t := range strings.Split(strings.Trim(strings.TrimSpace(tags), "[]"), ",") {
+		if strings.EqualFold(strings.TrimSpace(t), want) {
+			return true
+		}
+	}
+	return false
+}
+
+// isTruthy reports whether a scalar frontmatter value reads as boolean true.
+func isTruthy(s string) bool {
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case "true", "yes", "1", "on":
+		return true
+	}
+	return false
 }
 
 // Next returns the single recommended action for the current loop position. The
@@ -104,6 +197,13 @@ func (st LoopState) Next() NextAction {
 			Gate:    true,
 		}
 	}
+	if st.DesignInReview != "" {
+		return NextAction{
+			Summary: "A design is in review: " + st.DesignInReview + ". Review its frames/screenshots, then approve it before any UI code.",
+			Command: "kez sdd approve-design " + st.DesignInReview,
+			Gate:    true,
+		}
+	}
 	if st.Decisions == 0 {
 		return NextAction{
 			Summary: "Nothing recorded yet. Draft the first proposal (start with discovery — the what & why).",
@@ -112,10 +212,16 @@ func (st LoopState) Next() NextAction {
 	}
 	if len(st.PendingTasks) > 0 {
 		task := st.PendingTasks[0]
+		if st.FirstTaskNeedsUI && !st.FirstTaskHasDesign {
+			return NextAction{
+				Summary: "Task " + task.Name + " is UI work with no approved design. Design it first in Penpot/Figma (via MCP), record it, then implement.",
+				Command: `kez sdd design ` + st.FirstTaskDecision + ` "<screen or flow>"`,
+			}
+		}
 		if protectedBranches[st.Branch] {
 			return NextAction{
-				Summary: "Pending task " + task.Name + " but HEAD is on " + st.Branch + ". Branch before writing code.",
-				Command: "git checkout -b feat/" + featureSlug(task.Name),
+				Summary: "Pending task " + task.Name + " but HEAD is on " + st.Branch + ". Branch once per proposal before writing code.",
+				Command: "git checkout -b " + proposalBranch(st.FirstTaskDecision, task.Name),
 			}
 		}
 		label := task.Name
@@ -123,7 +229,7 @@ func (st LoopState) Next() NextAction {
 			label += " — " + task.Title
 		}
 		return NextAction{
-			Summary: "Implement pending task " + label + " (TDD: red → green), then open a PR.",
+			Summary: "Implement pending task " + label + " (TDD: red → green), then close it with `kez sdd done " + task.Name + "`. One PR per proposal.",
 		}
 	}
 	ref := st.LatestDecision
@@ -134,6 +240,17 @@ func (st LoopState) Next() NextAction {
 		Summary: "No open work. Add a task to the latest decision, or propose the next thing.",
 		Command: `kez sdd task ` + ref + ` "<task title>"`,
 	}
+}
+
+// proposalBranch names the single feature branch a proposal's work lands on: one
+// PR per proposal. When the task links to a decision, the branch carries the
+// decision's stem so every task of that decision shares it (feat/002-owner-auth).
+// A task with no decision link falls back to a branch off its own slug.
+func proposalBranch(decisionRef, taskName string) string {
+	if slug := normalizeRef(decisionRef); slug != "" {
+		return "feat/" + slug
+	}
+	return "feat/" + featureSlug(taskName)
 }
 
 // featureSlug turns a task file name (e.g. "002-owner-auth") into a branch slug,

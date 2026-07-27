@@ -66,8 +66,8 @@ func runSkillsList(dir string, options skillListOptions, stdout io.Writer, stder
 	if err != nil {
 		return writeAppError(stderr, redaction.ErrorMessage(err, redaction.Options{}), exitCrash)
 	}
-	// Overlay the binary's built-in skills (e.g. new-app) so `kez skills list`
-	// shows them alongside disk skills; a same-named disk skill still wins.
+	// Overlay the binary's built-in skills so `kez skills list` shows them
+	// alongside disk skills; a same-named disk skill still wins. (Currently empty.)
 	discovered = skills.MergeBuiltins(discovered, false)
 	// Surface name collisions that ListFromRoots silently resolved (earlier root
 	// wins), so a shadowed same-named skill is reported instead of just

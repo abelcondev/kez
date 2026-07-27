@@ -7,11 +7,16 @@ import (
 
 // builtinFS holds the skills compiled into the kez binary. Unlike disk skills
 // (installed under ~/.local/share/kez/skills), built-ins ship inside the binary
-// itself, so a curated set of workflows — like new-app — is always available in
-// a fresh checkout with no skills directory and cannot be lost by a missing or
-// unconfigured skills dir.
+// itself, so any curated workflow is always available in a fresh checkout with no
+// skills directory and cannot be lost by a missing or unconfigured skills dir.
 //
-//go:embed builtin/*/SKILL.md
+// The set is currently empty: the new-app workflow was retired in favor of the
+// always-on SDD loop advisor (`kez sdd next`) plus the guidance seeded into each
+// project's sdd/index.md. The `all:` embed keeps compiling with only the .keep
+// placeholder present, so a future built-in can be dropped into builtin/ with no
+// other change.
+//
+//go:embed all:builtin
 var builtinFS embed.FS
 
 // Builtin returns the skills baked into the binary, parsed like disk skills and
