@@ -2172,6 +2172,38 @@ func executeRequestPermissions(ctx context.Context, call ToolCall, args map[stri
 	}
 
 	request := requestPermissionsPrompt(call, parsed, grantProfile, permissionMode, options)
+
+	// Unsafe (yolo) mode approves everything without prompting, mirroring the
+	// auto-grant every other permission path applies in PermissionModeUnsafe
+	// (the loop dispatch at permissionGranted, and the sandbox network/unsandboxed
+	// retries). Without this short-circuit a model that calls request_permissions
+	// surfaces an approval prompt even in yolo — the one path that leaked a prompt.
+	if permissionMode == PermissionModeUnsafe {
+		const grantReason = "unsafe permission mode grants requested permissions"
+		response := sandbox.RequestPermissionsResponse{
+			Permissions: grantProfile,
+			Scope:       sandbox.PermissionGrantScopeTurn,
+		}
+		// With no sandbox engine there is nothing to enforce (unsafe already runs
+		// unsandboxed), so report the grant without attempting to install it.
+		if options.Sandbox != nil {
+			cleanup, err := options.Sandbox.GrantRequestPermissions(response.Permissions, response.Scope)
+			if err != nil {
+				return ToolResult{
+					ToolCallID: call.ID,
+					Name:       call.Name,
+					Status:     tools.StatusError,
+					Output:     "Error: Failed to grant requested permissions: " + err.Error(),
+				}, nil
+			}
+			if options.runPermissions != nil {
+				options.runPermissions.add(cleanup)
+			}
+		}
+		emitRequestPermissionsDecision(options, call, request, PermissionDecisionAllow, grantReason, true)
+		return requestPermissionsResult(call, response, false), nil
+	}
+
 	if options.OnPermissionRequest == nil {
 		response := sandbox.RequestPermissionsResponse{
 			Permissions: sandbox.RequestPermissionProfile{},

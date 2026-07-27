@@ -254,6 +254,48 @@ func TestRequestPermissionsStrictReviewResponse(t *testing.T) {
 	}
 }
 
+func TestRequestPermissionsUnsafeModeGrantsWithoutPrompting(t *testing.T) {
+	workspace := t.TempDir()
+	registry := tools.NewRegistry()
+	registry.Register(tools.NewRequestPermissionsTool())
+	provider := requestPermissionsOnlyProvider(`{"reason":"Need network.","permissions":{"network":{"enabled":true}}}`, "done")
+	var results []ToolResult
+	promptCalls := 0
+
+	result, err := Run(context.Background(), "request network", provider, Options{
+		Registry:       registry,
+		PermissionMode: PermissionModeUnsafe,
+		Cwd:            workspace,
+		Sandbox:        sandbox.NewEngine(sandbox.EngineOptions{WorkspaceRoot: workspace, Policy: sandbox.DefaultPolicy()}),
+		// In yolo the loop must never surface a prompt; if it does, this fires.
+		OnPermissionRequest: func(context.Context, PermissionRequest) (PermissionDecision, error) {
+			promptCalls++
+			return PermissionDecision{Action: PermissionDecisionDeny, Reason: "should not be asked in yolo"}, nil
+		},
+		OnToolResult: func(result ToolResult) { results = append(results, result) },
+		MaxTurns:     2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if promptCalls != 0 {
+		t.Fatalf("yolo mode surfaced %d permission prompts, want 0", promptCalls)
+	}
+	if result.FinalAnswer != "done" {
+		t.Fatalf("final answer = %q, want done", result.FinalAnswer)
+	}
+	if len(results) != 1 || results[0].Status != tools.StatusOK {
+		t.Fatalf("request_permissions in yolo should be an ok tool result, got %#v", results)
+	}
+	var response sandbox.RequestPermissionsResponse
+	if err := json.Unmarshal([]byte(results[0].Output), &response); err != nil {
+		t.Fatalf("unmarshal response %q: %v", results[0].Output, err)
+	}
+	if response.Permissions.Network == nil || response.Permissions.Network.Enabled == nil || !*response.Permissions.Network.Enabled {
+		t.Fatalf("yolo grant response = %#v, want network enabled", response.Permissions)
+	}
+}
+
 func requestPermissionsOnlyProvider(arguments string, finalAnswer string) *mockProvider {
 	if !strings.HasPrefix(arguments, "{") {
 		arguments = "{}"
