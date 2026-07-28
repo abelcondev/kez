@@ -67,7 +67,7 @@ func (tool writeFileTool) RunWithOptions(ctx context.Context, args map[string]an
 	if _, err := os.Stat(absolutePath); err == nil {
 		existed = true
 		if !overwrite {
-			return errorResult("Error: " + relativePath + " already exists. Pass overwrite: true to replace it.")
+			return errorResult("Error: " + relativePath + " already exists. To change part of it, use the edit_file tool; to replace the whole file, call write_file again with overwrite: true.")
 		}
 	} else if !os.IsNotExist(err) {
 		return errorResult("Error writing file " + relativePath + ": " + err.Error())
