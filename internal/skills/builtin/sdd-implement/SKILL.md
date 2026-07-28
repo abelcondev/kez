@@ -9,11 +9,7 @@ Build the task with test-driven discipline, on a feature branch, and carry it al
 
 ## Order of operations
 
-1. **Branch first.** One branch per proposal (all its tasks share `feat/<decision-slug>`). A compiled guard refuses code writes on `main`/`master`, so branch before editing:
-
-   ```
-   git checkout -b feat/<decision-slug>
-   ```
+1. **Stay on the proposal's branch.** `kez sdd propose` already opened this proposal's branch (`sdd/prop-<slug>`); all of its tasks share it — one branch, one PR. You should already be on it, so implement here. Only if HEAD somehow sits on `main`/`master` (a compiled guard refuses code writes there), return to the proposal's branch — check `git branch --list 'sdd/prop-*'` — or, as a fallback, `git checkout -b feat/<decision-slug>`.
 
 2. **TDD: red → green → refactor.** Write the failing test first, then the minimal code to pass, then refactor. Translate each **Given/When/Then** acceptance criterion into a test. For the test conventions (only `.test.ts` code tests, dedicated folder, what the agent writes vs. what the human verifies manually), load **`sdd-test`**.
 

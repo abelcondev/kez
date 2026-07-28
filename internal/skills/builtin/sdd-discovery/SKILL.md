@@ -20,13 +20,15 @@ You are turning a raw idea into a written proposal. **No code, no scaffolding, n
 
 3. **Do not jump to solutions.** If the user names a stack or library, note it for the stack phase — do not start designing around it here. Discovery is about the problem, not the implementation.
 
-4. **When the what/why is settled, write the proposal** (no code):
+4. **Do not invent scope.** Write only what the user actually stated. If a gap needs an assumption to proceed (e.g. "does v1 include a sales history?"), **ask it in your reply** — do not fold a silent assumption into the proposal for the user to catch later. A proposal is the user's, in the user's terms.
+
+5. **When the what/why is settled, write the proposal** (no code):
 
    ```
    kez sdd propose "<the what & why, in the user's own terms>"
    ```
 
-   Then stop at the approval gate — the user reviews `sdd/proposal.md` and runs `kez sdd approve`.
+   `propose` opens this proposal's own branch (`sdd/prop-<slug>`) and writes the doc there, so the proposal, its approval, and the implementation all land in a single PR — not on the default branch. Then stop at the approval gate — the user reviews `sdd/proposal.md` and runs `kez sdd approve`.
 
 ## After approval
 
@@ -37,4 +39,5 @@ The next deliberate step is choosing the stack and libraries — that is its own
 - ❌ Calling `ask_user` with 2–4 fixed options for a broad discovery question.
 - ❌ Running `npm create` / scaffolding before there is an approved proposal.
 - ❌ Deciding the stack inside discovery.
+- ❌ Folding in scope or assumptions the user never stated — ask instead.
 - ❌ Producing a plan the user never got to shape — ask, then propose.

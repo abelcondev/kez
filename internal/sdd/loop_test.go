@@ -112,13 +112,34 @@ func TestNextAllTasksDoneProposesTaskOrNext(t *testing.T) {
 	if _, _, err := Scaffold(root); err != nil {
 		t.Fatalf("Scaffold: %v", err)
 	}
-	writeArtifact(t, root, "decisions/001-architecture.md", "Decision", "Architecture", "approved")
+	writeRaw(t, root, "decisions/001-architecture.md", "---\ntype: Decision\ntitle: Architecture\ntags: [architecture]\nstatus: approved\n---\n\n# Decision\n")
 	writeArtifact(t, root, "decisions/002-catalog.md", "Decision", "Catalog", "approved")
 	writeArtifact(t, root, "tasks/001-foundations.md", "Task", "Foundations", "done")
 
 	action := mustState(t, root, "feat/x").Next()
 	if !strings.Contains(action.Command, "decisions/002-catalog.md") {
 		t.Fatalf("task command should target latest decision, got %q", action.Command)
+	}
+}
+
+func TestNextRoutesToStackAfterFirstDecision(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	// A product decision is approved, but no architecture/stack decision exists and
+	// there are no tasks: the loop must route to the stack phase, not to "add a task".
+	writeArtifact(t, root, "decisions/001-product.md", "Decision", "Product", "approved")
+
+	action := mustState(t, root, "feat/x").Next()
+	if action.Skill != "sdd-stack" {
+		t.Fatalf("expected sdd-stack, got skill=%q summary=%q", action.Skill, action.Summary)
+	}
+
+	// Once a stack decision exists (architecture tag), the stack gate clears.
+	writeRaw(t, root, "decisions/002-architecture.md", "---\ntype: Decision\ntitle: Architecture\ntags: [architecture]\nstatus: approved\n---\n\n# Decision\n")
+	if action := mustState(t, root, "feat/x").Next(); action.Skill == "sdd-stack" {
+		t.Fatalf("stack gate should clear once an architecture decision exists, got %q", action.Summary)
 	}
 }
 

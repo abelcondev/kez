@@ -5,15 +5,21 @@ description: Use after a proposal is approved and before writing code — choose
 
 # Stack & architecture
 
-Choosing the stack is a **deliberate decision**, not the first name that comes to mind. Do it research-first and record it, so every later task inherits it.
+Choosing the stack is the **user's decision**, informed by your research — never yours to make silently. This is the single most common failure: the agent picks a framework/UI/test-runner the user never chose and presents it as settled. Do not. Ask first, research, then propose only what the user did not pin down.
 
 ## How to run it
 
-1. **Start from the constraints in the approved decision**, not from a favorite stack. Money handling, offline, single-device, realtime, team familiarity — let these drive the choice.
+1. **Ask the user which technologies they want — before deciding anything.** This phase opens like discovery: a plain-text conversation, not a verdict. Start from the constraints in the approved decision (offline, money handling, single-device, realtime, team familiarity), then ask, a few at a time, in your reply:
+   - Language / framework? (e.g. Next.js, Remix, SvelteKit, vanilla)
+   - UI: component library / design system, or hand-rolled?
+   - Test runner and file convention?
+   - Anything already decided or off-limits (existing infra, licensing, hosting)?
 
-2. **Research before fixing.** When a library, framework, or service is external or you are not current on it, use web search/fetch to check it (maintenance, fit, gotchas) before committing. Do not assume; do not pick blind. If the user named a stack, still validate it fits the constraints and say so.
+   Offer to recommend if they have no preference — but let them say so. **Honor every technology the user has already named** (e.g. they chose the DB) as fixed; do not re-litigate it, only validate it fits.
 
-3. **Decide concretely — no "Option A vs B" left open.** Pick one stack, one set of core libraries, and state the trade-off you accepted.
+2. **Research before fixing.** For each piece the user left open, use web search/fetch to check it (maintenance, fit, gotchas) before proposing. Do not assume; do not pick blind. If the network is unavailable, say the research is incomplete — do not silently commit to a stack you could not verify.
+
+3. **Propose, do not impose.** Bring back a concrete recommendation for the open pieces with the trade-off you accepted, and confirm it with the user before recording. No layer of the stack gets written into the decision without the user having chosen or okayed it.
 
 4. **Record the conventions the rest of the loop depends on**, in the architecture decision and reflected in `sdd/index.md`:
    - **Test runner and test file convention** — e.g. Vitest with `*.test.ts`.
@@ -21,13 +27,13 @@ Choosing the stack is a **deliberate decision**, not the first name that comes t
    - **UI component library / design system** — so UI work builds from it instead of hand-rolled CSS.
    - **Lint / typecheck / build commands** — the validators the loop runs.
 
-5. **Persist it:**
+5. **Persist it — only after the user has okayed the choices:**
 
    ```
    kez sdd propose "Architecture: <stack>, <core libs>, test = <runner> in <folder>, UI = <lib>"
    ```
 
-   Then stop at the approval gate.
+   `propose` opens this decision's own branch (`sdd/prop-<slug>`); the doc, its approval, and the code all land in one PR. Then stop at the approval gate.
 
 ## After approval
 
@@ -35,6 +41,9 @@ Add tasks against this decision (`sdd-task`). Only now is scaffolding/installing
 
 ## Anti-patterns
 
+- ❌ **Deciding the stack without asking the user** — the top failure. Framework, UI library, test runner: the user chooses, you inform.
+- ❌ Presenting a fully-chosen stack as settled and reducing the user to approve/reject a finished doc.
+- ❌ Overriding or re-litigating a technology the user already named.
+- ❌ Committing to a stack when the network was down and you could not actually research it — say so instead.
 - ❌ `npm create …` before the stack is an approved decision.
-- ❌ Picking a DB/framework you did not verify is current and fits.
 - ❌ Leaving the test folder / runner unspecified — it makes `sdd-test` guess.

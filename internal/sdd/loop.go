@@ -10,6 +10,14 @@ import (
 // writes on; the loop advisor tells you to branch off them before implementing.
 var protectedBranches = map[string]bool{"main": true, "master": true}
 
+// IsProtectedBranch reports whether branch is one the feature-branch policy
+// protects — the default branch a proposal must be branched off before its doc,
+// approval, or code is written. Exported so the `propose` entrypoint can decide
+// whether to open the proposal's branch.
+func IsProtectedBranch(branch string) bool {
+	return protectedBranches[strings.TrimSpace(branch)]
+}
+
 // LoopState is the resumable position of the SDD loop: everything the advisor
 // needs to name the single next action. It is derived purely from files on disk
 // plus the current git branch, so it is cheap to recompute every turn — the
@@ -20,6 +28,7 @@ type LoopState struct {
 	ProposalTitle  string
 	Decisions      int
 	LatestDecision string // e.g. "decisions/002-architecture.md", or "" if none
+	StackDecided   bool   // some decision carries an architecture/stack tag
 	PendingTasks   []TaskInfo
 	Branch         string
 
@@ -72,6 +81,13 @@ func ReadLoopState(root, branch string) (LoopState, error) {
 	if len(decisions) > 0 {
 		latest := filepath.Base(decisions[len(decisions)-1])
 		st.LatestDecision = filepath.ToSlash(filepath.Join("decisions", latest))
+	}
+	for _, path := range decisions {
+		fm := readFrontmatter(path)
+		if hasTag(fm["tags"], "architecture") || hasTag(fm["tags"], "stack") {
+			st.StackDecided = true
+			break
+		}
 	}
 
 	tasks, err := listArtifacts(filepath.Join(base, "tasks"))
@@ -237,6 +253,16 @@ func (st LoopState) Next() NextAction {
 		return NextAction{
 			Summary: "Implement pending task " + label + " (TDD: red → green), review, then close it with `kez sdd done " + task.Name + "`. One PR per proposal.",
 			Skill:   "sdd-implement",
+		}
+	}
+	// A product decision exists but no stack/architecture decision does yet: the
+	// stack is the deliberate next step, not a task. Route to the stack phase,
+	// which asks the user which technologies they want before deciding.
+	if !st.StackDecided {
+		return NextAction{
+			Summary: "Decision recorded, but the stack isn't chosen yet. Ask the user which technologies they want (framework, UI, tests), research the open pieces, then record it as an architecture decision.",
+			Command: `kez sdd propose "Architecture: <stack chosen with the user>"`,
+			Skill:   "sdd-stack",
 		}
 	}
 	ref := st.LatestDecision

@@ -71,3 +71,17 @@ func TestDeriveTitleTruncatesOnWordBoundary(t *testing.T) {
 		t.Fatalf("expected ellipsis suffix, got %q", got)
 	}
 }
+
+func TestProposalBranchName(t *testing.T) {
+	cases := map[string]string{
+		"SaaS multi-tenant para pollerías en Perú. Offline.":            "sdd/prop-saas-multi-tenant-para-polleras-en-per",
+		"Architecture with TypeScript and InstantDB":                    "sdd/prop-architecture-with-typescript-and-instantdb",
+		"   ":                    "sdd/prop-untitled-proposal",
+		"Fix vuelto rounding bug": "sdd/prop-fix-vuelto-rounding-bug",
+	}
+	for desc, want := range cases {
+		if got := ProposalBranchName(desc); got != want {
+			t.Fatalf("ProposalBranchName(%q) = %q, want %q", desc, got, want)
+		}
+	}
+}

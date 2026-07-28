@@ -55,7 +55,7 @@ func SeedProposal(root, description string, now time.Time) (string, error) {
 	doc.WriteString("# Proposal\n\n")
 	doc.WriteString(description)
 	doc.WriteString("\n\n")
-	doc.WriteString("_Seeded skeleton — expand the what/why above, then fill Context and Acceptance below._\n\n")
+	doc.WriteString("_Seeded skeleton — this file already exists; edit it in place to expand the what/why above, then fill Context and Acceptance below._\n\n")
 	doc.WriteString("# Context\n\n")
 	doc.WriteString("The forces, constraints, and alternatives considered.\n\n")
 	doc.WriteString("# Acceptance\n\n")
@@ -66,6 +66,18 @@ func SeedProposal(root, description string, now time.Time) (string, error) {
 		return "", err
 	}
 	return relPath, nil
+}
+
+// ProposalBranchName derives the feature branch a proposal — and all of its
+// later work — lives on, from the same title slug the approved decision will
+// carry: sdd/prop-<slug>. One branch per proposal, so the doc, its approval, and
+// the implementation land in a single PR rather than scattered across main.
+func ProposalBranchName(description string) string {
+	slug := slugify(deriveTitle(description))
+	if slug == "" {
+		slug = "proposal"
+	}
+	return "sdd/prop-" + slug
 }
 
 // deriveTitle turns the first sentence/line of a description into a concise

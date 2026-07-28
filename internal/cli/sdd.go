@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
@@ -180,6 +181,8 @@ func runSDDApprove(root string, args []string, stdout io.Writer, stderr io.Write
 		return writeAppError(stderr, err.Error(), exitCrash)
 	}
 	fmt.Fprintf(stdout, "Approved. Wrote decision %s, appended sdd/log.md, updated sdd/index.md, reset sdd/proposal.md.\n", rel)
+	fmt.Fprintf(stdout, "Commit the decision and open its PR:\n  git add sdd/ && git commit -m %q\n  git push -u origin HEAD && gh pr create --fill\n", "docs(sdd): "+filepath.Base(rel))
+	fmt.Fprintf(stdout, "Run `kez sdd next` for the next step. Implementation for this decision stays on the same branch — one PR per proposal.\n")
 	return exitSuccess
 }
 
@@ -266,12 +269,18 @@ func runSDDPropose(root string, args []string, stdout io.Writer, stderr io.Write
 		return writeExecUsageError(stderr, `usage: kez sdd propose "<what you want to build>"`)
 	}
 
+	// Every proposal — product, architecture, or a doc adjustment — gets its own
+	// branch, so its doc, approval, and implementation all land in one PR instead
+	// of on the default branch. Done before the doc is written so the seed/agent
+	// writes on the branch, not on main.
+	ensureProposalBranch(root, description, stdout)
+
 	if _, err := deps.resolveConfig(root, config.Overrides{}); err != nil {
 		rel, seedErr := sdd.SeedProposal(root, description, time.Now())
 		if seedErr != nil {
 			return writeAppError(stderr, seedErr.Error(), exitCrash)
 		}
-		fmt.Fprintf(stdout, "No usable provider (%s).\nWrote a seeded proposal skeleton to %s — expand it, then run `kez sdd approve --title \"…\"`.\n", err.Error(), rel)
+		fmt.Fprintf(stdout, "No usable provider (%s).\nWrote a seeded proposal skeleton to %s. It already exists on disk — edit it in place (edit_file, not a fresh write) to expand the # Proposal, # Context, and # Acceptance sections, then run `kez sdd approve --title \"…\"`.\n", err.Error(), rel)
 		return exitSuccess
 	}
 
@@ -283,6 +292,45 @@ func runSDDPropose(root string, args []string, stdout io.Writer, stderr io.Write
 	// Forward flags (e.g. --model, -C) unchanged; append the built prompt last.
 	execArgs := append(passthroughFlags(args), prompt)
 	return runExec(execArgs, stdout, stderr, deps)
+}
+
+// ensureProposalBranch moves a new proposal onto its own feature branch
+// (sdd/prop-<slug>) when HEAD is on a protected branch, so the proposal doc, its
+// approval, and the implementation land in one branch → one PR. Best-effort: if
+// the directory is not a git repo (or already on a feature branch), it leaves the
+// proposal on the current branch. Reports what it did on stdout.
+func ensureProposalBranch(root, description string, stdout io.Writer) {
+	branch := currentGitBranch(root)
+	if branch == "" {
+		return // not a git repo, or detached HEAD — nothing to guard
+	}
+	target := sdd.ProposalBranchName(description)
+	if branch == target {
+		return // already on this proposal's own branch
+	}
+	// Branch when HEAD is on a protected branch (the clean case, after the previous
+	// proposal merged) OR on a *different* proposal's branch — each proposal gets
+	// its own branch → its own PR. An unrelated feature branch the user chose is
+	// left untouched.
+	if !sdd.IsProtectedBranch(branch) && !strings.HasPrefix(branch, "sdd/prop-") {
+		return
+	}
+	if err := checkoutBranch(root, target); err != nil {
+		fmt.Fprintf(stdout, "Note: could not open branch %s (%v); writing the proposal on %s.\n", target, err, branch)
+		return
+	}
+	fmt.Fprintf(stdout, "Branched to %s — this proposal's doc, approval, and code land in one PR.\n", target)
+}
+
+// checkoutBranch switches to branch, creating it if it does not exist yet. It
+// reuses an existing branch rather than failing, so re-running propose for the
+// same title returns to that proposal's branch.
+func checkoutBranch(root, branch string) error {
+	exists := exec.Command("git", "-C", root, "rev-parse", "--verify", "--quiet", "refs/heads/"+branch).Run() == nil
+	if exists {
+		return exec.Command("git", "-C", root, "checkout", branch).Run()
+	}
+	return exec.Command("git", "-C", root, "checkout", "-b", branch).Run()
 }
 
 // flagValue returns the value of --flag / --flag=value from args, or "" if
