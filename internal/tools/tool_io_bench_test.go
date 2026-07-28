@@ -25,7 +25,7 @@ func BenchmarkReadFileLargeRangeSmall(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		result := tool.Run(context.Background(), args)
 		if result.Status != StatusOK {
 			b.Fatalf("status=%s output=%s", result.Status, result.Output)
@@ -53,7 +53,7 @@ func BenchmarkGrepLargeTreeHeadLimit(b *testing.B) {
 
 	b.ReportAllocs()
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for b.Loop() {
 		result := tool.Run(context.Background(), args)
 		if result.Status != StatusOK {
 			b.Fatalf("status=%s output=%s", result.Status, result.Output)
