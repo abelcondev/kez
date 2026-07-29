@@ -74,9 +74,9 @@ func TestDeriveTitleTruncatesOnWordBoundary(t *testing.T) {
 
 func TestProposalBranchName(t *testing.T) {
 	cases := map[string]string{
-		"SaaS multi-tenant para pollerías en Perú. Offline.":            "sdd/prop-saas-multi-tenant-para-polleras-en-per",
-		"Architecture with TypeScript and InstantDB":                    "sdd/prop-architecture-with-typescript-and-instantdb",
-		"   ":                    "sdd/prop-untitled-proposal",
+		"SaaS multi-tenant para pollerías en Perú. Offline.": "sdd/prop-saas-multi-tenant-para-polleras-en-per",
+		"Architecture with TypeScript and InstantDB":         "sdd/prop-architecture-with-typescript-and-instantdb",
+		"   ":                     "sdd/prop-untitled-proposal",
 		"Fix vuelto rounding bug": "sdd/prop-fix-vuelto-rounding-bug",
 	}
 	for desc, want := range cases {
