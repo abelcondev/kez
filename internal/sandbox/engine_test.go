@@ -611,6 +611,41 @@ func TestEngineClassifiesNetworkAndDestructiveShellCommands(t *testing.T) {
 		t.Fatalf("re-closed network shell decision = %#v, want network-blocked prompt", reclosed)
 	}
 
+	// An escalated + already-granted network command runs unsandboxed, so the
+	// network gate is skipped: it must allow without a network prompt even under
+	// the default NetworkDeny policy (this is the path the loop uses to
+	// auto-escalate git-forge commands to the real HOME + credential store).
+	escalated := engine.Evaluate(context.Background(), Request{
+		ToolName:          "bash",
+		SideEffect:        SideEffectShell,
+		Permission:        PermissionPrompt,
+		PermissionMode:    PermissionModeAsk,
+		PermissionGranted: true,
+		Args: map[string]any{
+			"command":             "git push origin main",
+			"sandbox_permissions": "require_escalated",
+		},
+	})
+	if escalated.Action != ActionAllow || escalated.Block != nil {
+		t.Fatalf("escalated+granted network shell decision = %#v, want allow with no block", escalated)
+	}
+
+	// Escalation without a grant still prompts — the network-gate skip must not
+	// let an unapproved command slip through to unsandboxed execution.
+	escalatedUngranted := engine.Evaluate(context.Background(), Request{
+		ToolName:       "bash",
+		SideEffect:     SideEffectShell,
+		Permission:     PermissionPrompt,
+		PermissionMode: PermissionModeAsk,
+		Args: map[string]any{
+			"command":             "git push origin main",
+			"sandbox_permissions": "require_escalated",
+		},
+	})
+	if escalatedUngranted.Action != ActionPrompt || escalatedUngranted.Reason != ReasonNetworkBlocked {
+		t.Fatalf("escalated ungranted network shell decision = %#v, want network-blocked prompt", escalatedUngranted)
+	}
+
 	destructive := engine.Evaluate(context.Background(), Request{
 		ToolName:       "bash",
 		SideEffect:     SideEffectShell,

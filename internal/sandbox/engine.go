@@ -23,6 +23,12 @@ type EngineOptions struct {
 	// so network-touching shell commands are allowed without a request_permissions
 	// round-trip. The TUI updates it live on a permission-mode toggle.
 	UnsafeNetwork bool
+	// AutoEscalateVCS enables auto-escalating well-known version-control forge
+	// network commands (gh, git push/fetch/pull/clone/ls-remote) to run
+	// unsandboxed so they reach the real HOME + credential store (macOS keychain,
+	// git credential helpers, gh auth) that the sandbox otherwise hides. Default
+	// on; disabled via `sandbox.autoEscalateVcs: false`.
+	AutoEscalateVCS bool
 }
 
 type Engine struct {
@@ -36,6 +42,10 @@ type Engine struct {
 	sessionProfiles  *permissionProfileGrantSet
 	turnProfiles     *permissionProfileGrantSet
 	commandPrefixes  *commandPrefixGrantSet
+	// autoEscalateVCS auto-escalates well-known git-forge network commands to run
+	// unsandboxed (real HOME + credential store). Set once at construction from
+	// config; read-only afterwards, so a plain bool is race-free.
+	autoEscalateVCS bool
 	// unsafeNetwork widens the effective policy to NetworkAllow when the run is in
 	// yolo/unsafe permission mode. It lives on the engine (not the per-request
 	// PermissionMode) because the native sandbox profile is built from the
@@ -77,9 +87,17 @@ func NewEngine(options EngineOptions) *Engine {
 		sessionProfiles:  newPermissionProfileGrantSet(),
 		turnProfiles:     newPermissionProfileGrantSet(),
 		commandPrefixes:  newCommandPrefixGrantSet(),
+		autoEscalateVCS:  options.AutoEscalateVCS,
 	}
 	engine.unsafeNetwork.Store(options.UnsafeNetwork)
 	return engine
+}
+
+// AutoEscalateVCSEnabled reports whether the engine auto-escalates well-known
+// git-forge network commands to unsandboxed execution. A nil engine reports
+// false so callers need not guard.
+func (engine *Engine) AutoEscalateVCSEnabled() bool {
+	return engine != nil && engine.autoEscalateVCS
 }
 
 // SetUnsafeNetwork toggles the engine's unsafe-network default. When on, the
@@ -399,10 +417,20 @@ func (engine *Engine) Evaluate(ctx context.Context, request Request) Decision {
 	}
 	netMode := engine.effectiveNetworkMode(policy)
 	if netMode == NetworkDeny && HasRiskCategory(risk, "network") && !engine.toolNetworkExempt(request) {
-		if request.SideEffect == SideEffectShell && request.PermissionMode != PermissionUnsafe {
-			return Decision{Action: ActionPrompt, Risk: risk, Reason: ReasonNetworkBlocked}
+		// An escalated, already-granted shell command runs unsandboxed, where the
+		// native seatbelt/bwrap network policy does not apply — so the network gate
+		// is moot and would only surface a pointless prompt. Escalation itself still
+		// requires a grant (enforced by the escalation branch below), so this cannot
+		// widen network for a command that was not explicitly approved to run
+		// unsandboxed.
+		escalatedAndGranted := request.SideEffect == SideEffectShell &&
+			request.PermissionGranted && requestRequiresEscalatedSandbox(request)
+		if !escalatedAndGranted {
+			if request.SideEffect == SideEffectShell && request.PermissionMode != PermissionUnsafe {
+				return Decision{Action: ActionPrompt, Risk: risk, Reason: ReasonNetworkBlocked}
+			}
+			return deny(request, risk, BlockNetwork, "", ReasonNetworkBlocked, false)
 		}
-		return deny(request, risk, BlockNetwork, "", ReasonNetworkBlocked, false)
 	}
 	if HasRiskCategory(risk, "destructive") {
 		if request.SideEffect == SideEffectShell && !request.PermissionGranted && request.PermissionMode != PermissionUnsafe {

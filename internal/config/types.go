@@ -89,6 +89,21 @@ type SandboxConfig struct {
 	// are visible to the agent. Off by default. No-op on platforms/OS versions that
 	// do not deliver seatbelt denials to the queryable log.
 	MonitorDenials bool `json:"monitorDenials,omitempty"`
+	// AutoEscalateVCS controls auto-escalating well-known version-control forge
+	// network commands (gh, git push/fetch/pull/clone/ls-remote) to run
+	// unsandboxed, so they reach the real HOME + credential store (macOS keychain,
+	// git credential helpers, gh auth) the sandbox otherwise hides. A pointer so an
+	// explicit false disables it while an omitted key keeps the default (enabled).
+	// Honored from the GLOBAL user config and CLI only — never project config, so a
+	// cloned repo cannot change the escalation posture. The command allowlist is
+	// fixed in code; config only flips the feature on/off.
+	AutoEscalateVCS *bool `json:"autoEscalateVcs,omitempty"`
+}
+
+// AutoEscalateVCSEnabled reports the resolved auto-escalation setting: enabled
+// unless explicitly disabled with `sandbox.autoEscalateVcs: false`.
+func (c SandboxConfig) AutoEscalateVCSEnabled() bool {
+	return c.AutoEscalateVCS == nil || *c.AutoEscalateVCS
 }
 
 type NotifyConfig struct {

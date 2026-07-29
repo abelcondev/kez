@@ -923,7 +923,8 @@ func buildExecSandboxEngine(workspaceRoot string, resolved config.ResolvedConfig
 		// Yolo/unsafe headless runs open network egress up front so package
 		// installs, git push, and gh don't dead-end on a request_permissions
 		// round-trip that has no interactive approver.
-		UnsafeNetwork: permissionMode == agent.PermissionModeUnsafe,
+		UnsafeNetwork:   permissionMode == agent.PermissionModeUnsafe,
+		AutoEscalateVCS: resolved.Sandbox.AutoEscalateVCSEnabled(),
 	}), nil
 }
 

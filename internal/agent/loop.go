@@ -1154,6 +1154,26 @@ func executeToolCall(ctx context.Context, registry *tools.Registry, call ToolCal
 			}
 		}
 	}()
+	// Auto-escalate well-known git-forge network commands (gh, git
+	// push/fetch/pull/clone/ls-remote) to run unsandboxed, so they reach the real
+	// HOME + credential store (macOS keychain, git credential helpers, gh auth)
+	// that the sandbox hides behind a virtual HOME and scrubbed tokens. Injecting
+	// require_escalated makes the runner skip the native wrapper on the FIRST run
+	// (a plain sandboxed gh dead-ends on auth, which is not a sandbox denial, so
+	// the retry path never triggers). Gated on the sandbox actually enforcing and
+	// permitting unsandboxed execution — when DenyRead carves out secrets,
+	// UnsandboxedExecutionAllowed is false and these stay sandboxed. Runs in every
+	// permission mode (yolo still wraps commands, so it needs escalation too).
+	if toolFound && isShellCommandTool(call.Name) && options.Sandbox != nil &&
+		options.Sandbox.AutoEscalateVCSEnabled() && options.Sandbox.UnsandboxedExecutionAllowed() &&
+		autoEscalateVCSCommand(call.Name, args) {
+		args = unsandboxedRetryArgs(args)
+		permissionGranted = true
+		if decisionReason == "" {
+			decisionReason = "auto-escalated git-forge command (real HOME + credential store)"
+			decisionAction = PermissionDecisionAllow
+		}
+	}
 	if toolFound && !permissionGranted {
 		if grant, ok, session := matchCommandPrefix(call.Name, args, options); ok {
 			permissionGranted = true

@@ -146,6 +146,95 @@ func isShellCommandTool(toolName string) bool {
 	return toolName == "bash" || toolName == "exec_command"
 }
 
+// autoEscalateVCSCommand reports whether a shell command is a well-known
+// version-control forge network operation that should auto-escalate to run
+// unsandboxed, so it reaches the real HOME + credential store (macOS keychain,
+// git credential helpers, gh auth) that the sandbox hides behind a virtual HOME
+// and scrubbed tokens. It is conservative: every segment must be either a
+// forge-network op (gh, git push/fetch/pull/clone/ls-remote) or an independently
+// known-safe segment, and at least one must be a forge op. So `git push` and
+// `gh pr create` escalate, but `git push && npm run deploy` or `git fetch | evil`
+// do not — the unsafe segment keeps the whole command on the normal sandboxed
+// path. Commands that already carry sandbox_permissions are left untouched.
+func autoEscalateVCSCommand(toolName string, args map[string]any) bool {
+	if !isShellCommandTool(toolName) {
+		return false
+	}
+	if shellCommandAdditionalPermissionsRequested(args) || shellCommandRequiresEscalated(args) {
+		return false
+	}
+	command, ok := firstStringArg(args, "command", "cmd", "script", "shell")
+	if !ok {
+		return false
+	}
+	segments, ok := safeShellCommandSegments(command)
+	if !ok {
+		return false
+	}
+	matchedForge := false
+	for _, tokens := range segments {
+		if vcsForgeNetworkSegment(tokens) {
+			matchedForge = true
+			continue
+		}
+		if knownSafeCommandSegment(tokens) {
+			continue
+		}
+		return false
+	}
+	return matchedForge
+}
+
+// vcsForgeNetworkSegment reports whether a single command segment is a git-forge
+// network operation that needs credential access: any gh subcommand, or git
+// push/fetch/pull/clone/ls-remote.
+func vcsForgeNetworkSegment(tokens []string) bool {
+	if len(tokens) == 0 {
+		return false
+	}
+	switch commandName(tokens[0]) {
+	case "gh":
+		// Bare `gh` just prints help; require a subcommand so an empty invocation
+		// does not needlessly escalate.
+		return len(tokens) >= 2
+	case "git":
+		return gitNetworkSubcommand(tokens)
+	default:
+		return false
+	}
+}
+
+// gitNetworkSubcommand reports whether a git invocation is a network subcommand
+// (push/fetch/pull/clone/ls-remote), skipping leading global options the same way
+// gitSubcommand does. It first rejects any --upload-pack/--receive-pack option
+// (which can name an arbitrary program to run for local-path remotes), wherever
+// it appears, so auto-escalation cannot be abused to run something unsandboxed
+// without review.
+func gitNetworkSubcommand(command []string) bool {
+	for _, arg := range command[1:] {
+		if strings.HasPrefix(arg, "--upload-pack") || strings.HasPrefix(arg, "--receive-pack") {
+			return false
+		}
+	}
+	for index := 1; index < len(command); index++ {
+		arg := command[index]
+		if gitOptionConsumesValue(arg) {
+			index++
+			continue
+		}
+		if gitOptionHasInlineValue(arg) || arg == "--" || strings.HasPrefix(arg, "-") {
+			continue
+		}
+		switch arg {
+		case "push", "fetch", "pull", "clone", "ls-remote":
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
 func firstStringArg(args map[string]any, names ...string) (string, bool) {
 	for _, name := range names {
 		if raw, ok := args[name].(string); ok {

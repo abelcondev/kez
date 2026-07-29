@@ -709,7 +709,8 @@ func runInteractiveTUIWithSetup(stderr io.Writer, deps appDeps, permissionMode a
 		SensitiveEnvKeys: providerSensitiveEnvKeys(resolved),
 		// Seed from the launch permission mode; a live shift+tab toggle updates it
 		// via Engine.SetUnsafeNetwork from the TUI update loop.
-		UnsafeNetwork: permissionMode == agent.PermissionModeUnsafe,
+		UnsafeNetwork:   permissionMode == agent.PermissionModeUnsafe,
+		AutoEscalateVCS: resolved.Sandbox.AutoEscalateVCSEnabled(),
 	})
 	executionRunner.SetPreparer(sandboxEngine)
 	specialistRuntime, err := registerSpecialistTools(registry, workspaceRoot, resolved.Swarm.MaxTeamSize)

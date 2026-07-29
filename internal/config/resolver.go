@@ -239,6 +239,9 @@ func mergeConfig(dst *FileConfig, src FileConfig) {
 	if src.Sandbox.MonitorDenials {
 		dst.Sandbox.MonitorDenials = true
 	}
+	if src.Sandbox.AutoEscalateVCS != nil {
+		dst.Sandbox.AutoEscalateVCS = src.Sandbox.AutoEscalateVCS
+	}
 	if mode := strings.TrimSpace(src.Notify.Mode); mode != "" {
 		dst.Notify.Mode = mode
 	}
@@ -312,6 +315,9 @@ func mergeProjectConfig(dst *FileConfig, src FileConfig) error {
 	if src.Sandbox.MonitorDenials {
 		dst.Sandbox.MonitorDenials = true
 	}
+	// Sandbox.AutoEscalateVCS is intentionally NOT merged from project config: a
+	// cloned repo must not be able to change whether git-forge commands run
+	// unsandboxed (with real credential access). Global config and CLI only.
 	if mode := strings.TrimSpace(src.Notify.Mode); mode != "" {
 		dst.Notify.Mode = mode
 	}
