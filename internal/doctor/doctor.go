@@ -58,6 +58,10 @@ type Options struct {
 	// LSP-server checks. Nil means exec.LookPath; tests inject a stub so the
 	// checks are deterministic regardless of the host's installed tooling.
 	LookupExecutable func(string) (string, error)
+	// RunCommand runs a host command for the GitHub check (git remote -v, gh auth
+	// status) and returns its combined output. Nil means a real exec; tests inject
+	// a stub so the check is deterministic and side-effect-free.
+	RunCommand func(string, ...string) (string, error)
 }
 
 func Run(options Options) Report {
@@ -76,6 +80,7 @@ func Run(options Options) Report {
 	checks = append(checks, modelCheck)
 	checks = append(checks, connectivityCheck(options.Provider, options.Connectivity, modelCheck.Status, options.ProviderHealth))
 	checks = append(checks, sandboxBackendCheck(options.GOOS, options.LookupExecutable, options.WorkspaceRoot, options.Sandbox))
+	checks = append(checks, githubCheck(options.LookupExecutable, options.RunCommand, options.WorkspaceRoot, options.Sandbox))
 	checks = append(checks, lspServersCheck(options.LookupExecutable))
 
 	report := Report{
