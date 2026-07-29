@@ -167,7 +167,7 @@ func autoEscalateVCSCommand(toolName string, args map[string]any) bool {
 	if !ok {
 		return false
 	}
-	segments, ok := safeShellCommandSegments(command)
+	segments, ok := forgeCommandSegments(command)
 	if !ok {
 		return false
 	}
@@ -183,6 +183,111 @@ func autoEscalateVCSCommand(toolName string, args map[string]any) bool {
 		return false
 	}
 	return matchedForge
+}
+
+// forgeCommandSegments parses a command into simple-command segments for the
+// auto-escalation check. It shares safeShellCommandSegments' structural safety
+// (no redirects, background, negation, coprocess; only &&/||/| chaining and
+// plain calls — never a subshell or block that could hide a command) but reads
+// tokens tolerantly: quoted string literals are accepted because they are inert
+// data passed to gh/git (a jq filter `-q '.title'`, a PR `--body "text"`),
+// whereas safeShellCommandSegments rejects them and thus never escalated any real
+// `gh pr create`. Any command/parameter/arithmetic/process substitution still
+// fails the parse — those could execute or inject something into what would run
+// unsandboxed.
+func forgeCommandSegments(command string) ([][]string, bool) {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return nil, false
+	}
+	file, err := syntax.NewParser().Parse(strings.NewReader(command), "")
+	if err != nil || len(file.Stmts) == 0 {
+		return nil, false
+	}
+	segments := make([][]string, 0, len(file.Stmts))
+	for _, stmt := range file.Stmts {
+		if !collectForgeStatement(stmt, &segments) {
+			return nil, false
+		}
+	}
+	if len(segments) == 0 {
+		return nil, false
+	}
+	return segments, true
+}
+
+func collectForgeStatement(stmt *syntax.Stmt, segments *[][]string) bool {
+	if stmt == nil || stmt.Negated || stmt.Background || stmt.Coprocess || stmt.Disown || len(stmt.Redirs) > 0 {
+		return false
+	}
+	return collectForgeCommand(stmt.Cmd, segments)
+}
+
+func collectForgeCommand(cmd syntax.Command, segments *[][]string) bool {
+	switch node := cmd.(type) {
+	case *syntax.CallExpr:
+		tokens, ok := forgeCallTokens(node)
+		if !ok {
+			return false
+		}
+		*segments = append(*segments, tokens)
+		return true
+	case *syntax.BinaryCmd:
+		switch node.Op {
+		case syntax.AndStmt, syntax.OrStmt, syntax.Pipe:
+		default:
+			return false
+		}
+		return collectForgeStatement(node.X, segments) && collectForgeStatement(node.Y, segments)
+	default:
+		return false
+	}
+}
+
+func forgeCallTokens(call *syntax.CallExpr) ([]string, bool) {
+	if call == nil || len(call.Assigns) > 0 || len(call.Args) == 0 {
+		return nil, false
+	}
+	tokens := make([]string, 0, len(call.Args))
+	for _, word := range call.Args {
+		value, ok := literalWordValue(word)
+		if !ok {
+			return nil, false
+		}
+		tokens = append(tokens, value)
+	}
+	return tokens, true
+}
+
+// literalWordValue returns the static text of a word when it carries no runtime
+// expansion — bare literals plus single- and double-quoted string literals. It
+// fails on any command/parameter/arithmetic/process substitution (e.g. $(...),
+// $VAR, `...`), including inside double quotes, so an escalated command can never
+// smuggle in something that runs or expands at execution time.
+func literalWordValue(word *syntax.Word) (string, bool) {
+	if word == nil || len(word.Parts) == 0 {
+		return "", false
+	}
+	var builder strings.Builder
+	for _, part := range word.Parts {
+		switch node := part.(type) {
+		case *syntax.Lit:
+			builder.WriteString(node.Value)
+		case *syntax.SglQuoted:
+			builder.WriteString(node.Value)
+		case *syntax.DblQuoted:
+			for _, inner := range node.Parts {
+				lit, ok := inner.(*syntax.Lit)
+				if !ok {
+					return "", false
+				}
+				builder.WriteString(lit.Value)
+			}
+		default:
+			return "", false
+		}
+	}
+	return builder.String(), true
 }
 
 // vcsForgeNetworkSegment reports whether a single command segment is a git-forge
