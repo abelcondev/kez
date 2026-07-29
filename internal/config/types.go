@@ -98,12 +98,26 @@ type SandboxConfig struct {
 	// cloned repo cannot change the escalation posture. The command allowlist is
 	// fixed in code; config only flips the feature on/off.
 	AutoEscalateVCS *bool `json:"autoEscalateVcs,omitempty"`
+	// InjectGitHubToken controls injecting the host's active GitHub token into
+	// sandboxed commands (as GH_TOKEN + a github.com git credential helper) so gh
+	// and git-over-HTTPS authenticate inside the sandbox without a real HOME or
+	// keychain access. A pointer so an explicit false disables it while an omitted
+	// key keeps the default (enabled). Honored from the GLOBAL user config and CLI
+	// only — never project config, so a cloned repo cannot change whether the host
+	// token is exposed to commands.
+	InjectGitHubToken *bool `json:"injectGithubToken,omitempty"`
 }
 
 // AutoEscalateVCSEnabled reports the resolved auto-escalation setting: enabled
 // unless explicitly disabled with `sandbox.autoEscalateVcs: false`.
 func (c SandboxConfig) AutoEscalateVCSEnabled() bool {
 	return c.AutoEscalateVCS == nil || *c.AutoEscalateVCS
+}
+
+// InjectGitHubTokenEnabled reports the resolved GitHub-token-injection setting:
+// enabled unless explicitly disabled with `sandbox.injectGithubToken: false`.
+func (c SandboxConfig) InjectGitHubTokenEnabled() bool {
+	return c.InjectGitHubToken == nil || *c.InjectGitHubToken
 }
 
 type NotifyConfig struct {

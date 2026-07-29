@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 )
@@ -169,6 +170,39 @@ func TestSandboxRuntimeEnvironmentOverridesInheritedGitAskpass(t *testing.T) {
 	}
 	if slices.Contains(env, "GIT_ASKPASS=/usr/local/bin/gui-askpass") {
 		t.Fatalf("inherited GIT_ASKPASS still present; env=%#v", env)
+	}
+}
+
+func TestSandboxRuntimeEnvironmentInjectsGitHubToken(t *testing.T) {
+	runtimeState := SandboxRuntime{Root: "/runtime", Home: "/runtime/home", Temp: "/runtime/tmp", GitHubToken: "gho_secret"}
+	// A scrubbed inherited GH_TOKEN must be replaced by the injected one.
+	env := sandboxRuntimeEnvironment([]string{"PATH=/usr/bin"}, &runtimeState)
+
+	for key, want := range map[string]string{
+		"GH_TOKEN":         "gho_secret",
+		"GITHUB_TOKEN":     "gho_secret",
+		"GIT_CONFIG_COUNT": "1",
+		"GIT_CONFIG_KEY_0": "credential.https://github.com.helper",
+	} {
+		if got := envListValue(env, key, ""); got != want {
+			t.Fatalf("%s = %q, want %q", key, got, want)
+		}
+	}
+	helper := envListValue(env, "GIT_CONFIG_VALUE_0", "")
+	if !strings.Contains(helper, "password=$GH_TOKEN") || !strings.Contains(helper, "username=x-access-token") {
+		t.Fatalf("git credential helper = %q, want username + password=$GH_TOKEN", helper)
+	}
+}
+
+func TestSandboxRuntimeEnvironmentWithoutGitHubTokenInjectsNothing(t *testing.T) {
+	runtimeState := SandboxRuntime{Root: "/runtime", Home: "/runtime/home", Temp: "/runtime/tmp"}
+	env := sandboxRuntimeEnvironment([]string{"PATH=/usr/bin"}, &runtimeState)
+	for _, key := range []string{"GH_TOKEN", "GITHUB_TOKEN", "GIT_CONFIG_COUNT", "GIT_CONFIG_KEY_0", "GIT_CONFIG_VALUE_0"} {
+		for _, kv := range env {
+			if strings.HasPrefix(kv, key+"=") {
+				t.Fatalf("unexpected %s injected without a token: %q", key, kv)
+			}
+		}
 	}
 }
 

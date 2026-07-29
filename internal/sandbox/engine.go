@@ -29,6 +29,13 @@ type EngineOptions struct {
 	// git credential helpers, gh auth) that the sandbox otherwise hides. Default
 	// on; disabled via `sandbox.autoEscalateVcs: false`.
 	AutoEscalateVCS bool
+	// GitHubTokenProvider, when set, returns the host's active GitHub token to
+	// inject into sandboxed commands (as GH_TOKEN + a github.com git credential
+	// helper) so gh and git-over-HTTPS authenticate without a real HOME or keychain
+	// access. It is called once per wrapped command build, so a provider that
+	// re-reads the active account (with a short TTL) tracks `gh auth switch` on the
+	// host. Returns "" to inject nothing. Nil disables injection entirely.
+	GitHubTokenProvider func() string
 }
 
 type Engine struct {
@@ -46,6 +53,9 @@ type Engine struct {
 	// unsandboxed (real HOME + credential store). Set once at construction from
 	// config; read-only afterwards, so a plain bool is race-free.
 	autoEscalateVCS bool
+	// githubTokenProvider resolves the host's active GitHub token to inject into
+	// sandboxed commands. Nil disables injection. Set once at construction.
+	githubTokenProvider func() string
 	// unsafeNetwork widens the effective policy to NetworkAllow when the run is in
 	// yolo/unsafe permission mode. It lives on the engine (not the per-request
 	// PermissionMode) because the native sandbox profile is built from the
@@ -77,20 +87,30 @@ func NewEngine(options EngineOptions) *Engine {
 		scope = newScopeBestEffort(workspaceRoot)
 	}
 	engine := &Engine{
-		workspaceRoot:    workspaceRoot,
-		policy:           policy,
-		store:            options.Store,
-		backend:          options.Backend,
-		scope:            scope,
-		sensitiveEnvKeys: normalizeSensitiveEnvKeys(options.SensitiveEnvKeys),
-		sessionGrants:    newMemoryGrantSet(),
-		sessionProfiles:  newPermissionProfileGrantSet(),
-		turnProfiles:     newPermissionProfileGrantSet(),
-		commandPrefixes:  newCommandPrefixGrantSet(),
-		autoEscalateVCS:  options.AutoEscalateVCS,
+		workspaceRoot:       workspaceRoot,
+		policy:              policy,
+		store:               options.Store,
+		backend:             options.Backend,
+		scope:               scope,
+		sensitiveEnvKeys:    normalizeSensitiveEnvKeys(options.SensitiveEnvKeys),
+		sessionGrants:       newMemoryGrantSet(),
+		sessionProfiles:     newPermissionProfileGrantSet(),
+		turnProfiles:        newPermissionProfileGrantSet(),
+		commandPrefixes:     newCommandPrefixGrantSet(),
+		autoEscalateVCS:     options.AutoEscalateVCS,
+		githubTokenProvider: options.GitHubTokenProvider,
 	}
 	engine.unsafeNetwork.Store(options.UnsafeNetwork)
 	return engine
+}
+
+// resolveGitHubToken returns the token to inject into a wrapped command's
+// environment, or "" when injection is disabled or the host has no active token.
+func (engine *Engine) resolveGitHubToken() string {
+	if engine == nil || engine.githubTokenProvider == nil {
+		return ""
+	}
+	return strings.TrimSpace(engine.githubTokenProvider())
 }
 
 // AutoEscalateVCSEnabled reports whether the engine auto-escalates well-known

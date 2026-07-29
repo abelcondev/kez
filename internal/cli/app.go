@@ -711,6 +711,10 @@ func runInteractiveTUIWithSetup(stderr io.Writer, deps appDeps, permissionMode a
 		// via Engine.SetUnsafeNetwork from the TUI update loop.
 		UnsafeNetwork:   permissionMode == agent.PermissionModeUnsafe,
 		AutoEscalateVCS: resolved.Sandbox.AutoEscalateVCSEnabled(),
+		// Inject the host's active GitHub token so gh and git-over-HTTPS
+		// authenticate inside the sandbox; re-read per command so `gh auth switch`
+		// is honored across a session.
+		GitHubTokenProvider: newGitHubTokenProvider(resolved),
 	})
 	executionRunner.SetPreparer(sandboxEngine)
 	specialistRuntime, err := registerSpecialistTools(registry, workspaceRoot, resolved.Swarm.MaxTeamSize)

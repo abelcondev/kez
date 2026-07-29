@@ -925,6 +925,10 @@ func buildExecSandboxEngine(workspaceRoot string, resolved config.ResolvedConfig
 		// round-trip that has no interactive approver.
 		UnsafeNetwork:   permissionMode == agent.PermissionModeUnsafe,
 		AutoEscalateVCS: resolved.Sandbox.AutoEscalateVCSEnabled(),
+		// Inject the host's active GitHub token so gh and git-over-HTTPS
+		// authenticate inside the sandbox without a real HOME or keychain access;
+		// the provider re-reads the active account so `gh auth switch` is honored.
+		GitHubTokenProvider: newGitHubTokenProvider(resolved),
 	}), nil
 }
 

@@ -186,6 +186,7 @@ func (engine *Engine) BuildCommandPlan(spec CommandSpec) (CommandPlan, error) {
 			return CommandPlan{}, runtimeErr
 		}
 		runtimeCleanup = cleanup
+		runtimeState.GitHubToken = engine.resolveGitHubToken()
 		profile = permissionProfileWithRuntime(profile, runtimeState)
 	}
 	manager := NewSandboxManager(SandboxManagerOptions{

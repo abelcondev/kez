@@ -30,7 +30,7 @@ func githubCheck(lookup func(string) (string, error), run func(string, ...string
 	}
 	usesSSH := strings.HasPrefix(remoteURL, "git@") || strings.HasPrefix(remoteURL, "ssh://")
 
-	details := map[string]any{"remote": remoteURL}
+	details := map[string]any{"remote": remoteURL, "injectGithubToken": sandboxConfig.InjectGitHubTokenEnabled()}
 	if usesSSH {
 		details["protocol"] = "ssh"
 	} else {

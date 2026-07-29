@@ -34,6 +34,12 @@ type SandboxRuntime struct {
 	Data   string `json:"data,omitempty"`
 	State  string `json:"state,omitempty"`
 	Temp   string `json:"temp,omitempty"`
+	// GitHubToken, when set, is injected as GH_TOKEN (plus a github.com git
+	// credential helper) into the sandboxed command's environment so gh and
+	// git-over-HTTPS authenticate against the host's active GitHub account without
+	// a real HOME or keychain access. json:"-" keeps this secret out of every
+	// serialized profile/execution report.
+	GitHubToken string `json:"-"`
 }
 
 func prepareSandboxRuntime(workspaceRoot string) (SandboxRuntime, func(), error) {
@@ -233,7 +239,28 @@ func sandboxRuntimeEnvironment(env []string, runtimeState *SandboxRuntime) []str
 		"GOMODCACHE=" + filepath.Join(runtimeState.Data, "go-mod"),
 		"CARGO_HOME=" + filepath.Join(runtimeState.Data, "cargo"),
 	}
+	overrides = append(overrides, githubTokenEnvironment(runtimeState.GitHubToken)...)
 	return upsertEnvList(env, overrides...)
+}
+
+// githubTokenEnvironment returns the env overrides that make gh and git-over-HTTPS
+// authenticate with the injected token. It runs AFTER credential scrubbing (via
+// upsertEnvList in sandboxRuntimeEnvironment), so the injected GH_TOKEN survives.
+// The git credential helper is scoped to github.com and reads the token from the
+// GH_TOKEN it sets, so no secret is written to disk or embedded in git config on
+// the host. Empty token → no overrides (feature off / no host auth).
+func githubTokenEnvironment(token string) []string {
+	token = strings.TrimSpace(token)
+	if token == "" {
+		return nil
+	}
+	return []string{
+		"GH_TOKEN=" + token,
+		"GITHUB_TOKEN=" + token,
+		"GIT_CONFIG_COUNT=1",
+		"GIT_CONFIG_KEY_0=credential.https://github.com.helper",
+		`GIT_CONFIG_VALUE_0=!f() { echo username=x-access-token; echo "password=$GH_TOKEN"; }; f`,
+	}
 }
 
 func permissionProfileWithRuntime(profile PermissionProfile, runtimeState SandboxRuntime) PermissionProfile {
