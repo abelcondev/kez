@@ -579,6 +579,38 @@ func TestEngineClassifiesNetworkAndDestructiveShellCommands(t *testing.T) {
 		t.Fatalf("network shell decision = %#v, want critical network deny", network)
 	}
 
+	// The engine-level unsafe-network default (set by a yolo launch / toggle) opens
+	// egress at the same choke point that builds the native profile, so the very
+	// same command now evaluates to allow instead of a network deny.
+	engine.SetUnsafeNetwork(true)
+	unsafeNetwork := engine.Evaluate(context.Background(), Request{
+		ToolName:       "bash",
+		SideEffect:     SideEffectShell,
+		Permission:     PermissionPrompt,
+		PermissionMode: PermissionUnsafe,
+		Args:           map[string]any{"command": "git push origin main"},
+	})
+	if unsafeNetwork.Action != ActionAllow || unsafeNetwork.Block != nil {
+		t.Fatalf("unsafe-network shell decision = %#v, want allow with no block", unsafeNetwork)
+	}
+	// Effective policy widening feeds the native profile too: a yolo command is not
+	// re-blocked at the OS layer.
+	if got := engine.effectiveNetworkMode(engine.effectivePolicy(engine.policy)); got != NetworkAllow {
+		t.Fatalf("effective network mode with unsafe-network = %q, want %q", got, NetworkAllow)
+	}
+	// Toggling back out of yolo re-closes egress.
+	engine.SetUnsafeNetwork(false)
+	reclosed := engine.Evaluate(context.Background(), Request{
+		ToolName:       "bash",
+		SideEffect:     SideEffectShell,
+		Permission:     PermissionPrompt,
+		PermissionMode: PermissionModeAsk,
+		Args:           map[string]any{"command": "git push origin main"},
+	})
+	if reclosed.Action != ActionPrompt || reclosed.Reason != ReasonNetworkBlocked {
+		t.Fatalf("re-closed network shell decision = %#v, want network-blocked prompt", reclosed)
+	}
+
 	destructive := engine.Evaluate(context.Background(), Request{
 		ToolName:       "bash",
 		SideEffect:     SideEffectShell,

@@ -60,7 +60,10 @@ func runACP(args []string, stdout io.Writer, stderr io.Writer, deps appDeps) int
 			if err != nil {
 				return nil, nil, err
 			}
-			engine, err := buildExecSandboxEngine(workspaceRoot, resolved, deps, scope)
+			// ACP resolves its permission mode per session, not at workspace-build
+			// time, so seed the engine as non-unsafe (network gated). The unsafe
+			// network default is a CLI/TUI yolo affordance.
+			engine, err := buildExecSandboxEngine(workspaceRoot, resolved, deps, scope, agent.PermissionModeAuto)
 			if err != nil {
 				return nil, nil, err
 			}

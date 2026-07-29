@@ -296,7 +296,7 @@ func runExec(args []string, stdout io.Writer, stderr io.Writer, deps appDeps) in
 	for _, tool := range tools.CoreToolsScoped(workspaceRoot, execScope) {
 		registry.Register(tool)
 	}
-	sandboxEngine, err := buildExecSandboxEngine(workspaceRoot, resolved, deps, execScope)
+	sandboxEngine, err := buildExecSandboxEngine(workspaceRoot, resolved, deps, execScope, permissionMode)
 	if err != nil {
 		return writeExecProviderError(stdout, stderr, options.outputFormat, "sandbox_error", err.Error())
 	}
@@ -906,7 +906,7 @@ func registerToolSearchIfEligible(registry *tools.Registry, deferThreshold int, 
 	registry.Register(tools.NewToolSearchTool(registry))
 }
 
-func buildExecSandboxEngine(workspaceRoot string, resolved config.ResolvedConfig, deps appDeps, scope *sandbox.Scope) (*sandbox.Engine, error) {
+func buildExecSandboxEngine(workspaceRoot string, resolved config.ResolvedConfig, deps appDeps, scope *sandbox.Scope, permissionMode agent.PermissionMode) (*sandbox.Engine, error) {
 	store, err := deps.newSandboxStore()
 	if err != nil {
 		return nil, err
@@ -920,6 +920,10 @@ func buildExecSandboxEngine(workspaceRoot string, resolved config.ResolvedConfig
 		Backend:          backend,
 		Scope:            scope,
 		SensitiveEnvKeys: providerSensitiveEnvKeys(resolved),
+		// Yolo/unsafe headless runs open network egress up front so package
+		// installs, git push, and gh don't dead-end on a request_permissions
+		// round-trip that has no interactive approver.
+		UnsafeNetwork: permissionMode == agent.PermissionModeUnsafe,
 	}), nil
 }
 

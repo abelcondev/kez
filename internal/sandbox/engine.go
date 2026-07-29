@@ -5,6 +5,7 @@ import (
 	"errors"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 )
 
@@ -17,6 +18,11 @@ type EngineOptions struct {
 	// SensitiveEnvKeys adds config-derived credential variable names to the
 	// catalog and namespace secrets scrubbed from sandboxed commands.
 	SensitiveEnvKeys []string
+	// UnsafeNetwork seeds the engine's unsafe-network default (see
+	// SetUnsafeNetwork): true when the run starts in yolo/unsafe permission mode,
+	// so network-touching shell commands are allowed without a request_permissions
+	// round-trip. The TUI updates it live on a permission-mode toggle.
+	UnsafeNetwork bool
 }
 
 type Engine struct {
@@ -30,6 +36,14 @@ type Engine struct {
 	sessionProfiles  *permissionProfileGrantSet
 	turnProfiles     *permissionProfileGrantSet
 	commandPrefixes  *commandPrefixGrantSet
+	// unsafeNetwork widens the effective policy to NetworkAllow when the run is in
+	// yolo/unsafe permission mode. It lives on the engine (not the per-request
+	// PermissionMode) because the native sandbox profile is built from the
+	// effective policy in BuildCommandPlan, which has no access to the request's
+	// mode — gating here is the one place that reaches both Evaluate and the
+	// seatbelt/bwrap profile. Atomic so the TUI can flip it from its update loop
+	// while the agent goroutine reads it.
+	unsafeNetwork atomic.Bool
 }
 
 func NewEngine(options EngineOptions) *Engine {
@@ -52,7 +66,7 @@ func NewEngine(options EngineOptions) *Engine {
 	if scope == nil && workspaceRoot != "" {
 		scope = newScopeBestEffort(workspaceRoot)
 	}
-	return &Engine{
+	engine := &Engine{
 		workspaceRoot:    workspaceRoot,
 		policy:           policy,
 		store:            options.Store,
@@ -64,6 +78,22 @@ func NewEngine(options EngineOptions) *Engine {
 		turnProfiles:     newPermissionProfileGrantSet(),
 		commandPrefixes:  newCommandPrefixGrantSet(),
 	}
+	engine.unsafeNetwork.Store(options.UnsafeNetwork)
+	return engine
+}
+
+// SetUnsafeNetwork toggles the engine's unsafe-network default. When on, the
+// effective policy is widened to NetworkAllow so yolo/unsafe runs perform network
+// egress (git push, package installs, gh, …) without a request_permissions
+// round-trip — matching how unsafe mode already auto-allows destructive and
+// out-of-workspace commands. The TUI calls this on a live permission-mode toggle;
+// headless runs seed it once via EngineOptions.UnsafeNetwork. A nil engine is a
+// no-op so callers need not guard.
+func (engine *Engine) SetUnsafeNetwork(enabled bool) {
+	if engine == nil {
+		return
+	}
+	engine.unsafeNetwork.Store(enabled)
 }
 
 // Scope returns the engine's shared write scope (nil when the engine was

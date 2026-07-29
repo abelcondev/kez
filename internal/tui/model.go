@@ -1731,6 +1731,10 @@ func (m model) updateModel(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// and let the key fall through to their own handlers below.
 			if m.noBlockingModal() {
 				m.permissionMode = nextPermissionMode(m.permissionMode)
+				// Keep the sandbox's unsafe-network default in step with the mode so
+				// toggling into yolo opens network egress (and toggling out re-closes
+				// it) for the next command, matching a yolo launch.
+				m.agentOptions.Sandbox.SetUnsafeNetwork(m.permissionMode == agent.PermissionModeUnsafe)
 				return m, nil
 			}
 		case m.keyMatch(m.keyBindings.cycleReasoning, msg, func(tea.KeyMsg) bool { return keyCtrl(msg, 't') }):

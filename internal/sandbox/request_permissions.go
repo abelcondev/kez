@@ -355,6 +355,13 @@ func (engine *Engine) effectivePolicy(policy Policy) Policy {
 	if engine == nil {
 		return policy
 	}
+	// Yolo/unsafe runs open network egress by default. Applied before the grant
+	// profiles (which can only widen further), this reaches both Evaluate's
+	// network gate and the native sandbox profile built in BuildCommandPlan, so a
+	// wrapped shell command is not blocked at the OS layer either.
+	if engine.unsafeNetwork.Load() {
+		policy.Network = NetworkAllow
+	}
 	for _, profile := range engine.sessionProfiles.list() {
 		policy = applyRequestPermissionProfile(policy, profile)
 	}
