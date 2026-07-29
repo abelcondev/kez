@@ -3,6 +3,7 @@ package sandbox
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 )
@@ -140,6 +141,7 @@ func TestSandboxRuntimeEnvironmentUsesManagedState(t *testing.T) {
 		"XDG_DATA_HOME":         runtimeState.Data,
 		"XDG_STATE_HOME":        runtimeState.State,
 		"TMPDIR":                runtimeState.Temp,
+		"GIT_TERMINAL_PROMPT":   "0",
 		"npm_config_cache":      filepath.Join(runtimeState.Cache, "npm"),
 		"NPM_CONFIG_USERCONFIG": filepath.Join(runtimeState.Config, "npmrc"),
 		"YARN_CACHE_FOLDER":     filepath.Join(runtimeState.Cache, "yarn"),
@@ -149,8 +151,24 @@ func TestSandboxRuntimeEnvironmentUsesManagedState(t *testing.T) {
 			t.Fatalf("%s = %q, want %q; env=%#v", key, got, want, env)
 		}
 	}
+	// GIT_ASKPASS must be present and empty (neutralizing an inherited GUI askpass)
+	// — an explicit empty value, not merely absent, so check the raw entry.
+	if !slices.Contains(env, "GIT_ASKPASS=") {
+		t.Fatalf("GIT_ASKPASS= not present in env; env=%#v", env)
+	}
 	if got := envListValue(env, "PATH", ""); got != "/usr/bin" {
 		t.Fatalf("PATH = %q, want preserved caller path", got)
+	}
+}
+
+func TestSandboxRuntimeEnvironmentOverridesInheritedGitAskpass(t *testing.T) {
+	runtimeState := SandboxRuntime{Root: "/runtime", Home: "/runtime/home", Temp: "/runtime/tmp"}
+	env := sandboxRuntimeEnvironment([]string{"GIT_ASKPASS=/usr/local/bin/gui-askpass"}, &runtimeState)
+	if !slices.Contains(env, "GIT_ASKPASS=") {
+		t.Fatalf("inherited GIT_ASKPASS not overridden to empty; env=%#v", env)
+	}
+	if slices.Contains(env, "GIT_ASKPASS=/usr/local/bin/gui-askpass") {
+		t.Fatalf("inherited GIT_ASKPASS still present; env=%#v", env)
 	}
 }
 

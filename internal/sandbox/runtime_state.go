@@ -212,6 +212,15 @@ func sandboxRuntimeEnvironment(env []string, runtimeState *SandboxRuntime) []str
 		"XDG_CONFIG_HOME=" + runtimeState.Config,
 		"XDG_DATA_HOME=" + runtimeState.Data,
 		"XDG_STATE_HOME=" + runtimeState.State,
+		// A sandboxed command runs with a virtual HOME and no credential store, so
+		// any git operation over HTTPS that needs a username/password would block
+		// forever on an interactive terminal prompt (a silent hang, not an error).
+		// GIT_TERMINAL_PROMPT=0 turns that into an immediate, actionable failure;
+		// GIT_ASKPASS="" neutralizes any GUI askpass helper inherited from the host
+		// so it can't hijack the prompt either. Trusted forge commands (gh, git
+		// push/fetch/…) auto-escalate out of the sandbox and never reach this env.
+		"GIT_TERMINAL_PROMPT=0",
+		"GIT_ASKPASS=",
 		"TMPDIR=" + runtimeState.Temp,
 		"TMP=" + runtimeState.Temp,
 		"TEMP=" + runtimeState.Temp,
