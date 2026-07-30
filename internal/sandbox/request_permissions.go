@@ -227,6 +227,15 @@ func normalizePermissionPath(path string, basePath string) (string, error) {
 	if trimmed == "" {
 		return "", nil
 	}
+	// Expand a leading ~ against the real home BEFORE the absolute check. A model
+	// naturally requests paths like "~/.config/kez"; without this, ~ is treated as
+	// relative and joined onto the workspace root ("<workspace>/~/.config/kez"),
+	// which then fails EvalSymlinks with a confusing "write root must exist".
+	expanded, err := expandTildePath(trimmed)
+	if err != nil {
+		return "", err
+	}
+	trimmed = expanded
 	if !filepath.IsAbs(trimmed) {
 		base := strings.TrimSpace(basePath)
 		if base == "" {

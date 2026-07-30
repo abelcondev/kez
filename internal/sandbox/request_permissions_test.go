@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -248,4 +249,48 @@ func containsString(values []string, want string) bool {
 		}
 	}
 	return false
+}
+
+func TestExpandTildePath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("home: %v", err)
+	}
+	cases := map[string]string{
+		"~":              home,
+		"~/.config/kez":  filepath.Join(home, ".config", "kez"),
+		"/abs/path":      "/abs/path",
+		"relative/path":  "relative/path",
+		"~notuser/thing": "~notuser/thing", // only a leading ~ or ~/ expands
+	}
+	for in, want := range cases {
+		got, err := expandTildePath(in)
+		if err != nil {
+			t.Fatalf("expandTildePath(%q): %v", in, err)
+		}
+		if got != want {
+			t.Errorf("expandTildePath(%q) = %q, want %q", in, got, want)
+		}
+	}
+}
+
+func TestNormalizePermissionPathExpandsTilde(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("home: %v", err)
+	}
+	// A ~-prefixed request must resolve under the real home, NOT be joined onto the
+	// workspace base (which previously produced "<workspace>/~/..." and a hard
+	// "write root must exist" error).
+	got, err := normalizePermissionPath("~/.config/kez", "/some/workspace")
+	if err != nil {
+		t.Fatalf("normalizePermissionPath: %v", err)
+	}
+	wantPrefix := filepath.Clean(home)
+	if !strings.HasPrefix(got, wantPrefix) {
+		t.Fatalf("normalizePermissionPath(~/.config/kez) = %q, want under home %q", got, wantPrefix)
+	}
+	if strings.Contains(got, "workspace") {
+		t.Fatalf("normalizePermissionPath(~/.config/kez) = %q, must not join onto the workspace base", got)
+	}
 }

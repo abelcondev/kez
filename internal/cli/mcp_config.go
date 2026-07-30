@@ -13,8 +13,43 @@ import (
 	"github.com/abelcondev/kez/internal/config"
 	"github.com/abelcondev/kez/internal/mcp"
 	"github.com/abelcondev/kez/internal/redaction"
+	"github.com/abelcondev/kez/internal/sandbox"
 	"github.com/abelcondev/kez/internal/tools"
 )
+
+// insideKezSandbox reports whether this kez process is itself running inside a
+// kez sandbox. When true, deps.userConfigPath resolves to the ephemeral
+// per-workspace runtime config (XDG_CONFIG_HOME is redirected inside the
+// sandbox), not the real ~/.config/kez/config.json — so config mutations do not
+// persist and reads see the wrong file.
+func insideKezSandbox() bool {
+	return sandbox.IsAlreadySandboxed()
+}
+
+// guardSandboxedMCPConfigMutation aborts a config-mutating MCP command that is
+// running inside a kez sandbox: the write would land in an ephemeral runtime
+// copy that never persists, and a follow-up `kez mcp check` in the same sandbox
+// would even connect to it — a false positive that hides the failure. Returns
+// (exit code, true) when it blocked the command; (0, false) to proceed.
+func guardSandboxedMCPConfigMutation(stderr io.Writer, configPath string) (int, bool) {
+	if !insideKezSandbox() {
+		return 0, false
+	}
+	msg := "refusing to modify MCP config from inside a kez sandbox: " + configPath +
+		" is an ephemeral per-session runtime copy (XDG_CONFIG_HOME is redirected in the sandbox) and will NOT persist. " +
+		"Run this on the host, outside a kez session, so it writes your real ~/.config/kez/config.json."
+	return writeAppError(stderr, msg, exitUsage), true
+}
+
+// warnSandboxedMCPConfigRead notes, for a read-only MCP command, that it is
+// inspecting the ephemeral sandbox config rather than the real user config — so
+// a passing result (e.g. `kez mcp check`) is not mistaken for the host state.
+func warnSandboxedMCPConfigRead(stderr io.Writer, configPath string) {
+	if !insideKezSandbox() {
+		return
+	}
+	_, _ = fmt.Fprintf(stderr, "[kez] note: running inside a kez sandbox; this reflects the ephemeral session config %s, not your real ~/.config/kez/config.json. Run on the host for the persistent view.\n", configPath)
+}
 
 type mcpAddOptions struct {
 	json       bool
@@ -65,6 +100,9 @@ func runMCPAdd(args []string, stdout io.Writer, stderr io.Writer, deps appDeps) 
 	configPath, err := deps.userConfigPath()
 	if err != nil {
 		return writeAppError(stderr, "failed to resolve user config: "+err.Error(), exitCrash)
+	}
+	if code, blocked := guardSandboxedMCPConfigMutation(stderr, configPath); blocked {
+		return code
 	}
 	cfg, err := readMCPWritableConfig(configPath)
 	if err != nil {
@@ -132,6 +170,9 @@ func runMCPRemove(args []string, stdout io.Writer, stderr io.Writer, deps appDep
 	if err != nil {
 		return writeAppError(stderr, "failed to resolve user config: "+err.Error(), exitCrash)
 	}
+	if code, blocked := guardSandboxedMCPConfigMutation(stderr, configPath); blocked {
+		return code
+	}
 	cfg, err := readMCPWritableConfig(configPath)
 	if err != nil {
 		return writeAppError(stderr, redaction.ErrorMessage(err, redaction.Options{}), exitCrash)
@@ -193,6 +234,9 @@ func runMCPToggle(args []string, stdout io.Writer, stderr io.Writer, deps appDep
 	configPath, err := deps.userConfigPath()
 	if err != nil {
 		return writeAppError(stderr, "failed to resolve user config: "+err.Error(), exitCrash)
+	}
+	if code, blocked := guardSandboxedMCPConfigMutation(stderr, configPath); blocked {
+		return code
 	}
 	cfg, err := readMCPWritableConfig(configPath)
 	if err != nil {
@@ -258,6 +302,11 @@ func runMCPCheck(ctx context.Context, args []string, stdout io.Writer, stderr io
 	serverName := positional[0]
 	if err := mcp.ValidateServerName(serverName); err != nil {
 		return writeExecUsageError(stderr, err.Error())
+	}
+	// A `check` run inside the sandbox resolves the ephemeral session config, so a
+	// pass here does not mean the server is configured on the host — flag it.
+	if configPath, cfgErr := deps.userConfigPath(); cfgErr == nil {
+		warnSandboxedMCPConfigRead(stderr, configPath)
 	}
 
 	cwd, err := deps.getwd()

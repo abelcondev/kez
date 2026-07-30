@@ -361,17 +361,30 @@ func normalizeWorkspaceRootBestEffort(workspaceRoot string) string {
 	return filepath.Clean(absolute)
 }
 
+// expandTildePath expands a leading ~ (bare, ~/ or ~\) against the current
+// user's home directory. Other paths pass through unchanged. Shared by scope
+// write-root normalization and request_permissions path handling so both accept
+// the ~-prefixed paths a model commonly emits.
+func expandTildePath(path string) (string, error) {
+	trimmed := strings.TrimSpace(path)
+	if trimmed != "~" && !strings.HasPrefix(trimmed, "~/") && !strings.HasPrefix(trimmed, "~"+string(filepath.Separator)) {
+		return trimmed, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", fmt.Errorf("expand ~: %w", err)
+	}
+	return filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(trimmed[1:], "/"), string(filepath.Separator))), nil
+}
+
 func normalizeScopeRoot(path string) (string, error) {
 	trimmed := strings.TrimSpace(path)
 	if trimmed == "" {
 		return "", errors.New("write root path is empty")
 	}
-	if trimmed == "~" || strings.HasPrefix(trimmed, "~/") || strings.HasPrefix(trimmed, "~"+string(filepath.Separator)) {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return "", fmt.Errorf("expand ~: %w", err)
-		}
-		trimmed = filepath.Join(home, strings.TrimPrefix(strings.TrimPrefix(trimmed[1:], "/"), string(filepath.Separator)))
+	trimmed, err := expandTildePath(trimmed)
+	if err != nil {
+		return "", err
 	}
 	absolute, err := filepath.Abs(trimmed)
 	if err != nil {
