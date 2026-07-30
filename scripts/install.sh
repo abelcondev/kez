@@ -224,6 +224,19 @@ binary_path="$(find_extracted_binary "$extract_dir")" || fail "release archive d
 mkdir -p "$KEZ_INSTALL_DIR"
 cp "$binary_path" "$KEZ_INSTALL_DIR/kez"
 chmod 755 "$KEZ_INSTALL_DIR/kez"
+# macOS (Apple Silicon especially) SIGKILLs a freshly downloaded binary with
+# "Code Signature Invalid": the download carries a com.apple.quarantine xattr,
+# and on Sequoia the code-signing monitor rejects the ad-hoc signature on first
+# exec, then records the rejection in the file's provenance so every re-run keeps
+# failing (`zsh: killed kez`). Strip the quarantine and re-apply a fresh ad-hoc
+# signature (codesign ships in the base system) so the binary CI already signed
+# runs locally. Best-effort: never fail the install over it.
+if [ "$platform" = "macos" ]; then
+  xattr -d com.apple.quarantine "$KEZ_INSTALL_DIR/kez" 2>/dev/null || true
+  if command -v codesign >/dev/null 2>&1; then
+    codesign --force --sign - "$KEZ_INSTALL_DIR/kez" 2>/dev/null || true
+  fi
+fi
 # Optional helper binaries/dirs, copied only when a release ships them (the lean
 # release archive contains just the kez binary, so these no-op there).
 copy_optional_file "kez-linux-sandbox"

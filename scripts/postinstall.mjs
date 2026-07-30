@@ -274,12 +274,24 @@ async function main() {
     mkdirSync(extractDir);
     extract(tempDir, assetName, 'extracted');
 
+    // macOS SIGKILLs a freshly downloaded binary with "Code Signature Invalid":
+    // the download is quarantined and Sequoia's code-signing monitor then rejects
+    // the ad-hoc signature on first exec (poisoning the file so re-runs keep
+    // failing). Strip the quarantine and re-apply a fresh ad-hoc signature so the
+    // CI-signed binary runs locally. Best-effort — never fail the install over it.
+    const hardenMacExecutable = (path) => {
+      if (platform !== 'macos') return;
+      spawnSync('xattr', ['-d', 'com.apple.quarantine', path], { stdio: 'ignore' });
+      spawnSync('codesign', ['--force', '--sign', '-', path], { stdio: 'ignore' });
+    };
+
     // Copy only known basenames into the package root. We never honor
     // archive-relative paths, so a crafted entry cannot escape the package.
     const primarySource = findByBasename(extractDir, binaryName);
     if (!primarySource) fail(`archive ${assetName} did not contain ${binaryName}`);
     copyFileSync(primarySource, installedBinary);
     if (platform !== 'windows') chmodSync(installedBinary, 0o755);
+    hardenMacExecutable(installedBinary);
 
     for (const name of optionalBinaries) {
       const source = findByBasename(extractDir, name);
@@ -293,6 +305,7 @@ async function main() {
       const dest = join(packageRoot, name);
       copyFileSync(source, dest);
       if (platform !== 'windows') chmodSync(dest, 0o755);
+      hardenMacExecutable(dest);
     }
 
     writeFileSync(markerPath, VERSION + '\n');
