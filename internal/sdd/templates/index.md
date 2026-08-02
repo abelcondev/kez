@@ -5,7 +5,7 @@ Open Knowledge Format (OKF). It is read first at the start of every session.
 
 - `proposal.md` — the current, in-review proposal (transient; cleared on approval).
 - `decisions/` — approved, numbered architectural decisions (historical).
-- `designs/` — approved UI designs (frames + screenshots), the gate before UI code.
+- `designs/` — approved UI designs (the live `/design-system` workbench route + screenshots), the gate before UI code.
 - `tasks/` — units of work with Gherkin acceptance criteria.
 - `log.md` — append-only history of what happened and when.
 
@@ -17,8 +17,9 @@ next step from disk state; do only that step, and stop at every gate.
 
 ```
 propose (what & why, no code)
-    → approve (→ decisions/NNN)        ── human gate
-    → [if UI] design (→ designs/NNN)   ── human gate: Penpot/Figma via MCP
+    → approve (→ decisions/NNN)          ── human gate
+    → [after stack] design system         ── build base components in /design-system, review live
+    → [if UI] design (→ designs/NNN)     ── human gate: components in the /design-system workbench
     → task (Gherkin acceptance)
     → branch: one feature branch per proposal (feat/NNN-slug)
     → implement (TDD: red → green), close with `kez sdd done`
@@ -33,12 +34,15 @@ decision's tasks land in one PR. Never merge or push to the protected branch.
 
 ## UI conventions
 
-<!-- Record the project's component library / design system here so every UI task
-builds from it instead of hand-rolling. Example:
-- Component library: <name + url>. Build screens from its components; do not
-  reimplement with raw CSS/utility classes when a component exists. If a primitive
-  is missing, add it to `components/ui/` (or the library) first.
-- Design tokens / theme: <where they live>. -->
+<!-- Record the project's /design-system workbench here so every UI task builds
+from it instead of hand-rolling. The design system is built in code, in an
+isolated route, and reviewed live — not mocked up in an external tool. Example:
+- Workbench route: <e.g. /design-system>. A gallery rendering every component in
+  every state; it is the review surface and the source of truth for UI.
+- Design tokens / theme: <where they live>. Screens bind to these — no magic values.
+- Rule: build screens from the workbench components; do not reimplement with raw
+  CSS/utility classes when a component exists. If a primitive is missing, add it to
+  the workbench first (a small design-system pass), then compose from it. -->
 
 ## Decisions
 

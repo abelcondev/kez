@@ -400,9 +400,9 @@ func sddContext(cwd string) string {
 	b.WriteString("/log.md`). Resume by asking the repo — run `kez sdd next` for the single next step; do only that step and stop at every gate.\n\n")
 
 	b.WriteString("### UI work\n\n")
-	b.WriteString("A task that ships user-facing UI must have an approved design first (`")
+	b.WriteString("The design system is built in code, in an isolated `/design-system` workbench route, and reviewed live — not mocked up in an external tool (Figma/Penpot). Right after the stack is chosen, build the base components there first. A task that ships user-facing UI must have an approved design first (`")
 	b.WriteString(sdd.DirName)
-	b.WriteString("/designs/NNN`, built in Penpot/Figma via MCP and approved with `kez sdd approve-design`) — do not jump straight to code. Build screens from the project's component library / design system as recorded in the index's \"UI conventions\"; do not hand-roll with raw CSS or utility classes when a component exists. If a primitive is missing, add it to the library first.\n\n")
+	b.WriteString("/designs/NNN`, the components rendered in the `/design-system` workbench and approved with `kez sdd approve-design`) — do not jump straight to code. Build screens from that workbench as recorded in the index's \"UI conventions\"; do not hand-roll with raw CSS or utility classes when a component exists. If a primitive is missing, add it to the workbench first.\n\n")
 
 	// When the repo requires PRs (a .kez/require-branch marker or KEZ_REQUIRE_BRANCH),
 	// state the branch/PR policy up front so the agent branches BEFORE editing —

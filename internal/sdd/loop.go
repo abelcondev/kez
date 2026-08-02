@@ -33,11 +33,19 @@ type LoopState struct {
 	Branch         string
 
 	// Design gate. A UI-bearing decision must have an approved design artifact
-	// under sdd/designs/ before its tasks may be implemented in code.
+	// under sdd/designs/ before its tasks may be implemented in code. The design is
+	// the components rendered live in an isolated /design-system workbench route —
+	// the code-first replacement for external mockup tools — not a static mockup.
 	DesignInReview     string // a design artifact awaiting the gate ("designs/NNN-slug"), or ""
 	FirstTaskDecision  string // decision ref PendingTasks[0] links to (verbatim), or ""
 	FirstTaskNeedsUI   bool   // that decision is tagged UI, so a design is required first
 	FirstTaskHasDesign bool   // an approved design already exists for that decision
+
+	// Design-system foundations. Right after the stack is chosen and before any
+	// feature UI, the loop nudges building the base components in an isolated
+	// /design-system workbench route and reviewing them live at its gate.
+	DesignSystemDecision string // ref of the decision tagged design-system, or ""
+	DesignSystemReady    bool   // that decision has an approved workbench design
 }
 
 // NextAction is the one recommended step given a LoopState. Gate marks a step
@@ -117,6 +125,17 @@ func ReadLoopState(root, branch string) (LoopState, error) {
 		if st.FirstTaskDecision != "" {
 			st.FirstTaskNeedsUI = decisionIsUI(base, st.FirstTaskDecision)
 			st.FirstTaskHasDesign = approvedByDecision[normalizeRef(st.FirstTaskDecision)]
+		}
+	}
+
+	// Design-system foundations: locate the decision tagged design-system (if any)
+	// and report whether its workbench design has been approved yet.
+	for _, path := range decisions {
+		if hasTag(readFrontmatter(path)["tags"], "design-system") {
+			ref := "decisions/" + filepath.Base(path)
+			st.DesignSystemDecision = ref
+			st.DesignSystemReady = approvedByDecision[normalizeRef(ref)]
+			break
 		}
 	}
 	return st, nil
@@ -219,7 +238,7 @@ func (st LoopState) Next() NextAction {
 	}
 	if st.DesignInReview != "" {
 		return NextAction{
-			Summary: "A design is in review: " + st.DesignInReview + ". Review its frames/screenshots, then approve it before any UI code.",
+			Summary: "A design is in review: " + st.DesignInReview + ". Open the /design-system workbench route and review the components live, then approve it before any UI code.",
 			Command: "kez sdd approve-design " + st.DesignInReview,
 			Gate:    true,
 		}
@@ -235,7 +254,7 @@ func (st LoopState) Next() NextAction {
 		task := st.PendingTasks[0]
 		if st.FirstTaskNeedsUI && !st.FirstTaskHasDesign {
 			return NextAction{
-				Summary: "Task " + task.Name + " is UI work with no approved design. Design it first in Penpot/Figma (via MCP), record it, then implement.",
+				Summary: "Task " + task.Name + " is UI work with no approved design. Build its components in the /design-system workbench route first, review them live, record the design, then implement the screen.",
 				Command: `kez sdd design ` + st.FirstTaskDecision + ` "<screen or flow>"`,
 				Skill:   "sdd-design",
 			}
@@ -263,6 +282,30 @@ func (st LoopState) Next() NextAction {
 			Summary: "Decision recorded, but the stack isn't chosen yet. Ask the user which technologies they want (framework, UI, tests), research the open pieces, then record it as an architecture decision.",
 			Command: `kez sdd propose "Architecture: <stack chosen with the user>"`,
 			Skill:   "sdd-stack",
+		}
+	}
+	// Foundations: the design system comes right after the stack and before any
+	// feature UI. Its components are built and reviewed live in an isolated
+	// /design-system workbench route — the code-first replacement for external
+	// mockup tools — rather than mocked up in a separate design app.
+	if !st.DesignSystemReady {
+		if st.DesignSystemDecision == "" {
+			return NextAction{
+				Summary: "Stack chosen, but there's no design system yet. Propose one: the base components (tokens, button, input, layout, states) built in an isolated /design-system workbench route, reviewed live before any feature UI.",
+				Command: `kez sdd propose "Design system: base components in an isolated /design-system workbench route"`,
+				Skill:   "sdd-design-system",
+			}
+		}
+		if protectedBranches[st.Branch] {
+			return NextAction{
+				Summary: "Design-system decision approved but HEAD is on " + st.Branch + ". Branch before building the workbench.",
+				Command: "git checkout -b " + proposalBranch(st.DesignSystemDecision, ""),
+			}
+		}
+		return NextAction{
+			Summary: "Build the /design-system workbench for the base components — each in every state (empty, loading, error, hover, variants) — then record it with `kez sdd design` and stop at the gate so the human reviews them live.",
+			Command: `kez sdd design ` + st.DesignSystemDecision + ` "Design system workbench"`,
+			Skill:   "sdd-design-system",
 		}
 	}
 	ref := st.LatestDecision

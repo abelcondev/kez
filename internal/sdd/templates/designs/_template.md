@@ -10,24 +10,24 @@ timestamp:
 
 # Design
 
-Link the source of truth and capture the result so a reviewer can approve without
-opening the tool.
+Link the running `/design-system` workbench route and capture the result so a
+reviewer can approve by exercising the live components.
 
 ## Source
 
-- Tool: <Penpot | Figma>
-- File / board: <url>
-- Frames: <list the frames this design covers>
+- Workbench route: <http://localhost:<port>/design-system#<section>>
+- Components covered: <list the components/sections this design covers>
 
 ## Screens
 
-Embed or link a screenshot of each screen/state (empty, loading, error, success).
+Embed or link a screenshot of each component/state (default, hover, focus,
+loading, error, empty, each variant).
 
 ## Components used
 
-List the design-system / component-library components each screen is built from
-(see the UI conventions in `index.md`). Flag any primitive that is missing and
-must be added to the library first — do not hand-roll it in the screen.
+List the design-system / workbench components each screen is built from (see the
+UI conventions in `index.md`). Flag any primitive that is missing and must be
+added to the workbench first — do not hand-roll it in the screen.
 
 ## Notes
 

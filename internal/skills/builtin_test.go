@@ -16,6 +16,7 @@ func findSkill(list []Skill, name string) (Skill, bool) {
 // so the router and this set must stay in sync.
 var sddPhaseSkills = []string{
 	"sdd-design",
+	"sdd-design-system",
 	"sdd-discovery",
 	"sdd-implement",
 	"sdd-review",

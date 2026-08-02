@@ -218,7 +218,7 @@ func runSDDDesign(root string, args []string, stdout io.Writer, stderr io.Writer
 	if err != nil {
 		return writeAppError(stderr, err.Error(), exitCrash)
 	}
-	fmt.Fprintf(stdout, "Created design %s (in-review, linked to %s). Build it in Penpot/Figma, fill in the frames + screenshots, then run `kez sdd approve-design %s`.\n", rel, decisionRef, strings.TrimSuffix(filepath.Base(rel), ".md"))
+	fmt.Fprintf(stdout, "Created design %s (in-review, linked to %s). Build the components in the /design-system workbench route, link it + screenshots, then run `kez sdd approve-design %s`.\n", rel, decisionRef, strings.TrimSuffix(filepath.Base(rel), ".md"))
 	return exitSuccess
 }
 

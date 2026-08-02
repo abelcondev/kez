@@ -113,11 +113,15 @@ func TestNextAllTasksDoneProposesTaskOrNext(t *testing.T) {
 		t.Fatalf("Scaffold: %v", err)
 	}
 	writeRaw(t, root, "decisions/001-architecture.md", "---\ntype: Decision\ntitle: Architecture\ntags: [architecture]\nstatus: approved\n---\n\n# Decision\n")
-	writeArtifact(t, root, "decisions/002-catalog.md", "Decision", "Catalog", "approved")
+	// A ready design system (approved decision + approved workbench design) so the
+	// foundations step is cleared and the loop reaches the task fallback.
+	writeRaw(t, root, "decisions/002-design-system.md", "---\ntype: Decision\ntitle: Design system\ntags: [design-system]\nstatus: approved\n---\n")
+	writeRaw(t, root, "designs/001-ds.md", "---\ntype: Design\ntitle: DS\ndecision: decisions/002-design-system.md\nstatus: approved\n---\n")
+	writeArtifact(t, root, "decisions/003-catalog.md", "Decision", "Catalog", "approved")
 	writeArtifact(t, root, "tasks/001-foundations.md", "Task", "Foundations", "done")
 
 	action := mustState(t, root, "feat/x").Next()
-	if !strings.Contains(action.Command, "decisions/002-catalog.md") {
+	if !strings.Contains(action.Command, "decisions/003-catalog.md") {
 		t.Fatalf("task command should target latest decision, got %q", action.Command)
 	}
 }
@@ -140,6 +144,59 @@ func TestNextRoutesToStackAfterFirstDecision(t *testing.T) {
 	writeRaw(t, root, "decisions/002-architecture.md", "---\ntype: Decision\ntitle: Architecture\ntags: [architecture]\nstatus: approved\n---\n\n# Decision\n")
 	if action := mustState(t, root, "feat/x").Next(); action.Skill == "sdd-stack" {
 		t.Fatalf("stack gate should clear once an architecture decision exists, got %q", action.Summary)
+	}
+}
+
+func TestNextAfterStackProposesDesignSystem(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	// Stack is decided but there is no design system yet: the loop must route to
+	// the design-system foundations step before any feature work.
+	writeRaw(t, root, "decisions/001-architecture.md", "---\ntype: Decision\ntitle: Architecture\ntags: [architecture]\nstatus: approved\n---\n")
+
+	action := mustState(t, root, "feat/x").Next()
+	if action.Skill != "sdd-design-system" {
+		t.Fatalf("expected sdd-design-system, got skill=%q summary=%q", action.Skill, action.Summary)
+	}
+	if !strings.HasPrefix(action.Command, `kez sdd propose "Design system`) {
+		t.Fatalf("expected a design-system propose command, got %q", action.Command)
+	}
+}
+
+func TestNextDesignSystemDecisionWantsWorkbench(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	writeRaw(t, root, "decisions/001-architecture.md", "---\ntype: Decision\ntitle: Architecture\ntags: [architecture]\nstatus: approved\n---\n")
+	// The design-system decision is approved but its workbench design is not: on a
+	// feature branch the loop asks to build + record the workbench, not a feature.
+	writeRaw(t, root, "decisions/002-design-system.md", "---\ntype: Decision\ntitle: Design system\ntags: [design-system]\nstatus: approved\n---\n")
+
+	action := mustState(t, root, "feat/002-design-system").Next()
+	if action.Skill != "sdd-design-system" {
+		t.Fatalf("expected sdd-design-system, got skill=%q summary=%q", action.Skill, action.Summary)
+	}
+	if !strings.HasPrefix(action.Command, "kez sdd design decisions/002-design-system.md") {
+		t.Fatalf("expected a workbench design command, got %q", action.Command)
+	}
+}
+
+func TestNextDesignSystemReadyProceedsToFeatures(t *testing.T) {
+	root := t.TempDir()
+	if _, _, err := Scaffold(root); err != nil {
+		t.Fatalf("Scaffold: %v", err)
+	}
+	writeRaw(t, root, "decisions/001-architecture.md", "---\ntype: Decision\ntitle: Architecture\ntags: [architecture]\nstatus: approved\n---\n")
+	writeRaw(t, root, "decisions/002-design-system.md", "---\ntype: Decision\ntitle: Design system\ntags: [design-system]\nstatus: approved\n---\n")
+	writeRaw(t, root, "designs/001-ds.md", "---\ntype: Design\ntitle: DS\ndecision: decisions/002-design-system.md\nstatus: approved\n---\n")
+
+	// With the workbench approved, foundations clears and the loop moves on to the
+	// task fallback rather than looping on the design system.
+	if action := mustState(t, root, "feat/x").Next(); action.Skill == "sdd-design-system" {
+		t.Fatalf("approved design system should clear foundations, got %q", action.Summary)
 	}
 }
 
