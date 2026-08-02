@@ -127,6 +127,14 @@ func buildSystemPromptParts(options Options) systemPromptParts {
 	if delegation := specialistDelegationContext(options); delegation != "" {
 		sections = append(sections, delegation)
 	}
+	// Deterministic implementation-route advisor (Direct / Delegated / SDD) and
+	// the content-bound review-receipt status, injected each turn from disk.
+	if routeBlock := implementationRouteContext(options.Cwd); routeBlock != "" {
+		sections = append(sections, routeBlock)
+	}
+	if receiptBlock := reviewReceiptContext(options.Cwd); receiptBlock != "" {
+		sections = append(sections, receiptBlock)
+	}
 	skillsBlock := skillsContext(options)
 	if skillsBlock != "" {
 		sections = append(sections, skillsBlock)

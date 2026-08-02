@@ -252,6 +252,10 @@ func Run(ctx context.Context, prompt string, provider Provider, options Options)
 		// parent would make Hooks.Dispatch's context.WithTimeout derive an
 		// already-expired context, so the sessionEnd hook would never actually run.
 		dispatchSessionEnd(context.WithoutCancel(ctx), options, result, err)
+		// Freeze a content-bound receipt for the turn's working tree so the next
+		// commit fast-paths and the advisor reflects current content. Detached
+		// from ctx for the same cancellation reason as the sessionEnd hook.
+		emitTurnReceipt(context.WithoutCancel(ctx), options)
 	}()
 	for turn := 0; turn < maxTurns; turn++ {
 		result.Turns = turn + 1
@@ -1348,6 +1352,22 @@ func executeToolCall(ctx context.Context, registry *tools.Registry, call ToolCal
 			return blockedByHookResult(call, outcome), nil
 		}
 	}
+	// Content-bound receipt delivery gate. Before a git commit becomes history,
+	// ensure a verified receipt covers exactly the working tree; before a git
+	// push (that does not itself commit first), refuse a HEAD no receipt covers.
+	if toolFound {
+		if commit, push := gitDeliveryIntent(call.Name, args); commit || push {
+			if commit {
+				ensureReceiptForCommit(ctx, options)
+			}
+			if push && !commit {
+				if blocked, ok := receiptPushGate(ctx, options, call); ok {
+					return blocked, nil
+				}
+			}
+		}
+	}
+
 	args = shellExecutionArgsForApproval(call.Name, args, decisionAction, options)
 
 	// Task tool: wire progress callback so the TUI sees live tool-call events

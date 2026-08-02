@@ -106,6 +106,7 @@ const (
 	DenialApprovalCanceled DenialCategory = "approval_canceled" // approval canceled and run aborted
 	DenialSandboxBlock     DenialCategory = "sandbox_block"     // blocked by the sandbox
 	DenialHookBlocked      DenialCategory = "hook_blocked"      // vetoed by a beforeTool hook
+	DenialReceiptBlocked   DenialCategory = "receipt_blocked"   // content not covered by a review receipt
 )
 
 // ProfilePolicy is the loop-facing slice of a selected execution profile.

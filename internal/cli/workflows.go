@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/abelcondev/kez/internal/config"
+	"github.com/abelcondev/kez/internal/receipt"
 	"github.com/abelcondev/kez/internal/redaction"
 	"github.com/abelcondev/kez/internal/selfverify"
 	"github.com/abelcondev/kez/internal/testrunner"
@@ -253,6 +254,13 @@ func runChanges(args []string, stdout io.Writer, stderr io.Writer, deps appDeps)
 			message = options.message
 		}
 
+		// Freeze a content-bound receipt over the working tree that is about to be
+		// committed, so the push gate can prove HEAD's content was reviewed.
+		if !options.dryRun {
+			if root, ok := receipt.Root(context.Background(), workspaceRoot); ok {
+				_, _ = receipt.Freeze(context.Background(), root, false, "frozen by kez changes commit")
+			}
+		}
 		result, err := deps.commitChanges(context.Background(), zerogit.CommitOptions{
 			Cwd:          workspaceRoot,
 			Message:      message,
@@ -846,6 +854,31 @@ Flags:
 	return err
 }
 
+// receiptCoversHead reports whether a review receipt covers HEAD's committed
+// content. It is best-effort: on its own read/git errors it returns covered, so
+// the gate never blocks a push because the gate itself failed.
+func receiptCoversHead(workspaceRoot string) (bool, string) {
+	root, ok := receipt.Root(context.Background(), workspaceRoot)
+	if !ok {
+		return true, ""
+	}
+	r, found, err := receipt.Read(context.Background(), root)
+	if err != nil {
+		return true, ""
+	}
+	if !found {
+		return false, "no review receipt exists for HEAD"
+	}
+	covered, err := receipt.HeadTreeMatches(context.Background(), root, r)
+	if err != nil {
+		return true, ""
+	}
+	if !covered {
+		return false, "HEAD content is not covered by a review receipt (amended, rebased, or committed outside kez)"
+	}
+	return true, ""
+}
+
 func runChangesPush(args []string, stdout io.Writer, stderr io.Writer, deps appDeps) int {
 	options, help, err := parseChangesArgs(args, "push")
 	if err != nil {
@@ -860,6 +893,15 @@ func runChangesPush(args []string, stdout io.Writer, stderr io.Writer, deps appD
 	workspaceRoot, err := resolveWorkspaceRoot(options.cwd, deps)
 	if err != nil {
 		return writeExecUsageError(stderr, err.Error())
+	}
+
+	// Content-bound receipt gate: refuse to push a HEAD whose content no review
+	// receipt covers (amended/rebased/opaque commit). --yes overrides, matching
+	// the default-branch escape below.
+	if !options.yes {
+		if ok, reason := receiptCoversHead(workspaceRoot); !ok {
+			return writeExecUsageError(stderr, fmt.Sprintf("push blocked by the content-bound receipt gate: %s. Commit through kez, or pass --yes to override.", reason))
+		}
 	}
 
 	result, err := deps.pushChanges(context.Background(), zerogit.PushOptions{
