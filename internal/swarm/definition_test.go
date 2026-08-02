@@ -2,12 +2,13 @@ package swarm
 
 import (
 	"errors"
+	"strings"
 	"testing"
 )
 
 func TestRegistryBuiltins(t *testing.T) {
 	r := NewRegistry()
-	for _, want := range []string{"teammate", "subagent"} {
+	for _, want := range []string{"teammate", "subagent", "explorer", "planner", "coder", "reviewer"} {
 		def, err := r.Lookup(want)
 		if err != nil {
 			t.Fatalf("builtin %q missing: %v", want, err)
@@ -18,8 +19,13 @@ func TestRegistryBuiltins(t *testing.T) {
 		if def.SystemPrompt == nil {
 			t.Fatalf("builtin %q must have a SystemPrompt", want)
 		}
-		if got := def.SystemPrompt(PromptContext{Team: "t", Task: "do x"}); got == "" {
+		got := def.SystemPrompt(PromptContext{Team: "t", Task: "do x"})
+		if got == "" {
 			t.Fatalf("builtin %q SystemPrompt returned empty", want)
+		}
+		// The phase specialists must fold the task briefing into the prompt.
+		if !strings.Contains(got, "do x") {
+			t.Fatalf("builtin %q SystemPrompt dropped the task briefing", want)
 		}
 	}
 }

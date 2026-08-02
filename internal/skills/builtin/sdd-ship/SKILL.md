@@ -11,7 +11,7 @@ Close the task and hand a clean PR to the human. This is the end of one turn of 
 
 - Validators pass (tests, typecheck, lint, build).
 - `sdd-test` coverage in place for every `code`-level Given/When/Then.
-- `sdd-review` findings addressed.
+- `sdd-review` run across both lenses (correctness+security, craft); every high-severity finding fixed, residual medium/low listed in the PR.
 
 ## How to run it
 
