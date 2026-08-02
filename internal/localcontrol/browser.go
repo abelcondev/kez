@@ -21,7 +21,32 @@ const (
 	DefaultTerminalDriver = "tuistory"
 	DefaultTimeout        = 30 * time.Second
 	EnvHelperManifest     = "KEZ_LOCAL_CONTROL_HELPERS"
+
+	// DefaultBrowserDriverVersion is the agent-browser version installed when
+	// browser_install has to bootstrap a missing helper. Keep it in sync with
+	// the "agent-browser" pin in package.json.
+	DefaultBrowserDriverVersion = "0.30.1"
+
+	// helperInstallTimeout bounds a package-manager install of the helper,
+	// which is far slower than a normal helper command (native builds, network).
+	helperInstallTimeout = 5 * time.Minute
 )
+
+// lookPath is indirected so tests can stub helper/package-manager discovery.
+var lookPath = exec.LookPath
+
+// HelperNotInstalledError means the helper binary could not be found on PATH,
+// in the packaged helpers tree, or via the helper manifest — it is not
+// installed, as opposed to being misconfigured. Callers detect it with
+// errors.As to decide whether an automatic install can help.
+type HelperNotInstalledError struct {
+	Driver string
+	Hint   string
+}
+
+func (e *HelperNotInstalledError) Error() string {
+	return fmt.Sprintf("%s was not found on PATH; %s", e.Driver, e.Hint)
+}
 
 type HelperOptions struct {
 	Enabled         bool
@@ -103,7 +128,7 @@ func NewBrowser(options BrowserOptions) Browser {
 	}
 	options.ConfigPath = "localControl.browser.helperPath"
 	options.DisabledMessage = "local browser control is disabled by user config"
-	options.MissingHint = "install the agent-browser package or set localControl.browser.helperPath"
+	options.MissingHint = "run browser_install to install it, or set localControl.browser.helperPath"
 	return Browser{helper: NewHelper(options)}
 }
 
@@ -174,13 +199,13 @@ func (helper Helper) resolvedHelper() (ResolvedHelper, error) {
 	if resolved, ok, err := adjacentHelper(driver); ok || err != nil {
 		return resolved, err
 	}
-	path, err := exec.LookPath(driver)
+	path, err := lookPath(driver)
 	if err != nil {
 		hint := strings.TrimSpace(helper.options.MissingHint)
 		if hint == "" {
 			hint = "install it or configure the helper path"
 		}
-		return ResolvedHelper{}, fmt.Errorf("%s was not found on PATH; %s", driver, hint)
+		return ResolvedHelper{}, &HelperNotInstalledError{Driver: driver, Hint: hint}
 	}
 	return ResolvedHelper{Command: path}, nil
 }
@@ -199,6 +224,73 @@ func (browser Browser) Enabled() bool {
 
 func (browser Browser) Run(ctx context.Context, args ...string) (CommandResult, error) {
 	return browser.helper.Run(ctx, args...)
+}
+
+// InstallHelper installs the browser helper package (agent-browser) when it is
+// not already available. It returns (result, attempted, err): attempted is
+// false when the helper already resolves, making this a no-op. It only installs
+// when the helper is genuinely missing (HelperNotInstalledError) — a
+// misconfigured helperPath is surfaced unchanged rather than masked.
+//
+// Installation prefers npm because npm runs lifecycle scripts by default, which
+// native transitive dependencies (koffi) need to build; a bare bun global
+// install skips those scripts and would leave a helper that fails at runtime.
+func (browser Browser) InstallHelper(ctx context.Context) (CommandResult, bool, error) {
+	helper := browser.helper
+	if !helper.options.Enabled {
+		message := strings.TrimSpace(helper.options.DisabledMessage)
+		if message == "" {
+			message = "local control helper is disabled"
+		}
+		return CommandResult{}, false, errors.New(message)
+	}
+	if _, err := helper.resolvedHelper(); err == nil {
+		return CommandResult{}, false, nil
+	} else {
+		var notInstalled *HelperNotInstalledError
+		if !errors.As(err, &notInstalled) {
+			return CommandResult{}, false, err
+		}
+	}
+
+	driver := strings.TrimSpace(helper.options.Driver)
+	if driver == "" {
+		driver = DefaultBrowserDriver
+	}
+	spec := driver + "@" + DefaultBrowserDriverVersion
+	command, args, err := nodePackageInstallCommand(driver, spec)
+	if err != nil {
+		return CommandResult{}, true, err
+	}
+
+	timeout := helper.options.Timeout
+	if timeout < helperInstallTimeout {
+		timeout = helperInstallTimeout
+	}
+	result, runErr := helper.options.Runner.Run(ctx, command, args, nil, timeout)
+	if runErr != nil {
+		return result, true, fmt.Errorf("install %s via %s: %w", spec, filepath.Base(command), runErr)
+	}
+	if result.ExitCode != 0 {
+		return result, true, fmt.Errorf("installing %s via %s exited with code %d", spec, filepath.Base(command), result.ExitCode)
+	}
+	if _, err := helper.resolvedHelper(); err != nil {
+		return result, true, fmt.Errorf(
+			"installed %s but %s is still not resolvable; ensure your Node package manager's global bin directory is on PATH, or set %s",
+			spec, driver, helper.options.ConfigPath)
+	}
+	return result, true, nil
+}
+
+// nodePackageInstallCommand builds the command that installs the helper package
+// globally, preferring npm so lifecycle scripts run (required for native deps).
+func nodePackageInstallCommand(driver, spec string) (string, []string, error) {
+	if path, err := lookPath("npm"); err == nil {
+		return path, []string{"install", "-g", spec}, nil
+	}
+	return "", nil, fmt.Errorf(
+		"cannot install %s automatically: npm was not found on PATH. Install npm, or install the helper manually with bun (\"bun install -g %s\" then \"bun pm -g trust %s\" so native dependencies build), or set localControl.browser.helperPath to an existing %s binary",
+		spec, spec, driver, driver)
 }
 
 func (desktop Desktop) Run(ctx context.Context, args ...string) (CommandResult, error) {

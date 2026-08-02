@@ -45,7 +45,7 @@ func newBrowserInstallTool(options localcontrol.BrowserOptions) Tool {
 	return browserInstallTool{
 		baseTool: baseTool{
 			name:        "browser_install",
-			description: "Install the local browser runtime used by browser automation.",
+			description: "Install local browser automation: bootstraps the agent-browser helper package if it is missing, then downloads the browser runtime. Run once if a browser command reports the helper or runtime is missing.",
 			parameters: Schema{
 				Type: "object",
 				Properties: map[string]PropertySchema{
@@ -65,6 +65,17 @@ func (tool browserInstallTool) Run(ctx context.Context, args map[string]any) Res
 	if err != nil {
 		return errorResult("Error: Invalid arguments for browser_install: " + err.Error())
 	}
+	// Stage 1: make sure the helper binary itself exists, bootstrapping it via a
+	// package manager when missing. The runtime download in stage 2 execs the
+	// helper, so without this a missing helper just loops on the same error.
+	if installResult, _, err := tool.browser.InstallHelper(ctx); err != nil {
+		message := "Error installing the browser helper: " + err.Error()
+		if out := strings.TrimSpace(installResult.Output()); out != "" {
+			message += "\n\n" + out
+		}
+		return errorResult(message)
+	}
+	// Stage 2: download the browser runtime (Chromium) via the helper.
 	commandArgs := []string{"install"}
 	if withDeps {
 		commandArgs = append(commandArgs, "--with-deps")
@@ -915,7 +926,7 @@ func localControlCommandResult(ctx context.Context, runner localControlRunner, k
 			message += "\n\n" + budget.Output
 		}
 		if kind == "browser" && command != "install" && browserInstallHintApplies(err.Error()+"\n"+budget.Output) {
-			message += "\n\nIf this is a first-use browser runtime error, call browser_install once, then retry the browser command."
+			message += "\n\nIf the browser helper or its runtime is missing, call browser_install once (it installs the helper package and the browser runtime), then retry the browser command."
 		}
 		return Result{
 			Status:    StatusError,

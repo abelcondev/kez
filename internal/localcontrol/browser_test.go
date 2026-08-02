@@ -210,6 +210,106 @@ func TestBrowserRunUsesAdjacentPackagedNodeBinHelper(t *testing.T) {
 	}
 }
 
+type flippingRunner struct {
+	path      string
+	args      []string
+	onInstall func()
+}
+
+func (runner *flippingRunner) Run(_ context.Context, path string, args []string, _ []string, _ time.Duration) (CommandResult, error) {
+	runner.path = path
+	runner.args = append([]string(nil), args...)
+	if runner.onInstall != nil {
+		runner.onInstall()
+	}
+	return CommandResult{Path: path, Args: append([]string(nil), args...), Stdout: "installed\n", ExitCode: 0}, nil
+}
+
+func TestInstallHelperBootstrapsMissingHelperViaNpm(t *testing.T) {
+	t.Setenv(EnvHelperManifest, "")
+	// No packaged helper adjacent to the binary.
+	oldExecutablePath := executablePath
+	executablePath = func() (string, error) { return filepath.Join(t.TempDir(), "zero"), nil }
+	t.Cleanup(func() { executablePath = oldExecutablePath })
+
+	installed := false
+	oldLookPath := lookPath
+	lookPath = func(name string) (string, error) {
+		switch name {
+		case "npm":
+			return "/fake/bin/npm", nil
+		case DefaultBrowserDriver:
+			if installed {
+				return "/fake/bin/agent-browser", nil
+			}
+		}
+		return "", os.ErrNotExist
+	}
+	t.Cleanup(func() { lookPath = oldLookPath })
+
+	runner := &flippingRunner{onInstall: func() { installed = true }}
+	browser := NewBrowser(BrowserOptions{Enabled: true, Runner: runner})
+
+	result, attempted, err := browser.InstallHelper(context.Background())
+	if err != nil {
+		t.Fatalf("InstallHelper error: %v", err)
+	}
+	if !attempted {
+		t.Fatal("attempted = false, want true (helper was missing)")
+	}
+	if runner.path != "/fake/bin/npm" {
+		t.Fatalf("install command = %q, want npm", runner.path)
+	}
+	want := []string{"install", "-g", DefaultBrowserDriver + "@" + DefaultBrowserDriverVersion}
+	if !reflect.DeepEqual(runner.args, want) {
+		t.Fatalf("install args = %#v, want %#v", runner.args, want)
+	}
+	if result.ExitCode != 0 {
+		t.Fatalf("install exit code = %d, want 0", result.ExitCode)
+	}
+}
+
+func TestInstallHelperNoopWhenHelperPresent(t *testing.T) {
+	dir := t.TempDir()
+	helper := filepath.Join(dir, "agent-browser")
+	if err := os.WriteFile(helper, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatalf("write helper: %v", err)
+	}
+	runner := &flippingRunner{}
+	browser := NewBrowser(BrowserOptions{Enabled: true, HelperPath: helper, Runner: runner})
+
+	_, attempted, err := browser.InstallHelper(context.Background())
+	if err != nil {
+		t.Fatalf("InstallHelper error: %v", err)
+	}
+	if attempted {
+		t.Fatal("attempted = true, want false (helper already resolves)")
+	}
+	if runner.path != "" {
+		t.Fatalf("runner invoked (%q); no-op must not run a package manager", runner.path)
+	}
+}
+
+func TestInstallHelperActionableWhenNoPackageManager(t *testing.T) {
+	t.Setenv(EnvHelperManifest, "")
+	oldExecutablePath := executablePath
+	executablePath = func() (string, error) { return filepath.Join(t.TempDir(), "zero"), nil }
+	t.Cleanup(func() { executablePath = oldExecutablePath })
+
+	oldLookPath := lookPath
+	lookPath = func(string) (string, error) { return "", os.ErrNotExist }
+	t.Cleanup(func() { lookPath = oldLookPath })
+
+	browser := NewBrowser(BrowserOptions{Enabled: true, Runner: &flippingRunner{}})
+	_, attempted, err := browser.InstallHelper(context.Background())
+	if !attempted {
+		t.Fatal("attempted = false, want true")
+	}
+	if err == nil || !strings.Contains(err.Error(), "npm was not found") {
+		t.Fatalf("err = %v, want npm-not-found guidance", err)
+	}
+}
+
 func quoteJSON(value string) string {
 	data, err := json.Marshal(value)
 	if err != nil {
