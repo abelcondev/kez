@@ -28,7 +28,7 @@ You are turning a raw idea into a written proposal. **No code, no scaffolding, n
    kez sdd propose "<the what & why, in the user's own terms>"
    ```
 
-   `propose` opens this proposal's own branch (`sdd/prop-<slug>`) and writes the doc there, so the proposal, its approval, and the implementation all land in a single PR — not on the default branch. Then stop at the approval gate — the user reviews `sdd/proposal.md` and runs `kez sdd approve`.
+   `propose` opens this proposal's own branch (`sdd/prop-<slug>`) and writes the doc there, so the proposal, its approval, and the implementation all land in a single PR — not on the default branch. Then stop at the approval gate: point the user at `sdd/proposal.md` and ask them to reply with a short approval (e.g. "aprobado") or the changes they want. Don't ask them to type a command — when they approve, run `kez sdd approve` yourself on their behalf.
 
 ## After approval
 

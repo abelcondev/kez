@@ -452,7 +452,19 @@ func sddContext(cwd string) string {
 		action := ls.Next()
 		b.WriteString("\n\n### Next step (from `kez sdd next`)\n\n")
 		b.WriteString(action.Summary)
-		if action.Command != "" {
+		if action.Gate {
+			// Human approval gate. Keep it friendly: never make the user type the
+			// CLI command. Tell them what to review, ask for a plain-language
+			// approval, and run the command yourself once they give it — so the
+			// user's whole job at the gate is to say "aprobado".
+			b.WriteString("\n\nThis is a human approval gate — stop and let the user decide. Do NOT ask them to run a command. In your reply, point them at the file to review and ask them to respond with a short approval (e.g. \"aprobado\", \"approve\", \"dale\", \"ok\") or the changes they want, then wait.")
+			if action.Command != "" {
+				b.WriteString("\n\nWhen the user approves, run this command yourself on their behalf — it records the approval — then continue the loop:\n\n`")
+				b.WriteString(action.Command)
+				b.WriteString("`")
+			}
+			b.WriteString("\n\nIf they ask for changes instead, make them and re-present the gate.")
+		} else if action.Command != "" {
 			b.WriteString("\n\n`")
 			b.WriteString(action.Command)
 			b.WriteString("`")
@@ -461,9 +473,6 @@ func sddContext(cwd string) string {
 			b.WriteString("\n\nLoad the `")
 			b.WriteString(action.Skill)
 			b.WriteString("` skill FIRST (call the skill tool with that exact name) and follow its guidance for this phase — it carries the dense, phase-specific rules that this summary only points at.")
-		}
-		if action.Gate {
-			b.WriteString("\n\nThis is a human gate — stop and let the user decide.")
 		}
 	}
 	return b.String()

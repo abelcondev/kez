@@ -29,7 +29,7 @@ The design is done **in code, in the project's `/design-system` workbench route*
    kez sdd approve-design <designs/NNN-slug>
    ```
 
-5. **Stop at the gate.** The human opens the workbench, exercises the components live, and approves. Without an approved design, the loop refuses UI code — do not try to route around it.
+5. **Stop at the gate.** The human opens the workbench and exercises the components live. Ask them to reply with a short approval (e.g. "aprobado") — don't make them type a command; when they approve, run `kez sdd approve-design <designs/NNN-slug>` yourself on their behalf. Without an approved design, the loop refuses UI code — do not try to route around it.
 
 ## Verification split
 

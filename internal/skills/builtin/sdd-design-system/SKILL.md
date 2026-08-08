@@ -97,7 +97,7 @@ Scope it right: a **fix or improvement to an existing component** is this lightw
    kez sdd approve-design <designs/NNN-slug>
    ```
 
-5. **Stop at the gate.** The human opens the route, exercises the components live, and approves. Without approval the loop refuses feature UI — do not route around it.
+5. **Stop at the gate.** The human opens the route and exercises the components live. Ask them to reply with a short approval (e.g. "aprobado") — don't make them type a command; when they approve, run `kez sdd approve-design <designs/NNN-slug>` yourself on their behalf. Without approval the loop refuses feature UI — do not route around it.
 
 ## Recording it in the index
 
