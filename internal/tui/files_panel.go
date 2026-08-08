@@ -40,12 +40,79 @@ type touchedFile struct {
 	lastRowIndex int // transcript index of the most recent result touching it
 }
 
-// touchedFiles recovers the session's touched-file roster from the transcript,
-// most recently touched first. Recomputed on demand (the value-receiver model
-// can't persist a registry from View), mirroring swarmSpawnedAgents; the scan is
-// a single pass over the transcript per render, same order as the sidebar's
-// other sections.
+// touchedFilesRosterCache memoizes the touched-file roster across the several
+// calls a single render makes (FILES header, body, selectables, and the
+// sidebar-visibility check) and across mouse hit-testing. computeTouchedFiles is
+// an O(transcript × changedFiles) scan, and a noisy workspace can make that
+// expensive enough that recomputing it 3–4× per frame starves keyboard input on
+// the single Bubble Tea goroutine. The cache lives behind a pointer so it is
+// shared by every copy the value-receiver model spawns; a cheap signature
+// invalidates it the moment the roster's inputs change.
+type touchedFilesRosterCache struct {
+	sig   touchedFilesSignature
+	valid bool
+	files []touchedFile
+}
+
+// touchedFilesSignature captures every input computeTouchedFiles reads, cheaply.
+// Older tool-result rows are immutable once appended, so the transcript length,
+// the git-sweep length, and the latest tool-result row's change counts/status
+// are enough to detect any change to the roster without re-scanning it.
+type touchedFilesSignature struct {
+	transcriptLen       int
+	gitTouchedLen       int
+	lastResultIndex     int
+	lastResultChanged   int
+	lastResultSummaries int
+	lastResultStatus    tools.Status
+}
+
+// touchedFiles returns the session's touched-file roster, memoized per frame.
+// See touchedFilesRosterCache for why the recomputation is cached.
 func (m model) touchedFiles() []touchedFile {
+	sig := m.touchedFilesSignature()
+	if m.touchedFilesMemo != nil && m.touchedFilesMemo.valid && m.touchedFilesMemo.sig == sig {
+		return m.touchedFilesMemo.files
+	}
+	files := m.computeTouchedFiles()
+	if m.touchedFilesMemo != nil {
+		m.touchedFilesMemo.sig = sig
+		m.touchedFilesMemo.files = files
+		m.touchedFilesMemo.valid = true
+	}
+	return files
+}
+
+// touchedFilesSignature computes the cache key for touchedFiles. The reverse
+// scan stops at the first (newest) tool-result row, so it is O(1) in the common
+// case where the latest row is a result and cheap otherwise.
+func (m model) touchedFilesSignature() touchedFilesSignature {
+	sig := touchedFilesSignature{
+		transcriptLen:   len(m.transcript),
+		gitTouchedLen:   len(m.gitTouched),
+		lastResultIndex: -1,
+	}
+	for i := len(m.transcript) - 1; i >= 0; i-- {
+		row := m.transcript[i]
+		if row.kind != rowToolResult {
+			continue
+		}
+		sig.lastResultIndex = i
+		sig.lastResultChanged = len(row.changedFiles)
+		sig.lastResultSummaries = len(row.changeSummaries)
+		sig.lastResultStatus = row.status
+		break
+	}
+	return sig
+}
+
+// computeTouchedFiles recovers the session's touched-file roster from the
+// transcript, most recently touched first. Recomputed on demand (the
+// value-receiver model can't persist a registry from View), mirroring
+// swarmSpawnedAgents; the scan is a single pass over the transcript, same order
+// as the sidebar's other sections. Callers should go through touchedFiles, which
+// memoizes this.
+func (m model) computeTouchedFiles() []touchedFile {
 	var files []touchedFile
 	index := map[string]int{}
 	for i, row := range m.transcript {

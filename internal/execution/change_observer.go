@@ -15,6 +15,14 @@ const (
 	maxObservedFiles    = 20_000
 	maxHashedFileBytes  = 1 << 20
 	maxTotalHashedBytes = 32 << 20
+	// maxReportedIndividualChanges bounds how many per-file changes a single
+	// command may surface. Beyond this the individual entries collapse into
+	// per-top-level-directory aggregates, so a command run against a workspace
+	// with a noisy background writer (a dev server rewriting generated files, a
+	// bulk checkout/format) can never flood the tool result — and the FILES
+	// sidebar that re-scans every changed path each frame — with tens of
+	// thousands of rows.
+	maxReportedIndividualChanges = 500
 )
 
 type ChangeKind string
@@ -85,7 +93,63 @@ func (observer *ChangeObserver) Changes() []Change {
 		}
 	}
 	sort.Slice(changes, func(i, j int) bool { return changes[i].Path < changes[j].Path })
-	return changes
+	return boundChanges(changes)
+}
+
+// boundChanges caps the number of individual (non-aggregated) file changes. Under
+// the budget it returns the slice unchanged. Over it, the individual changes
+// collapse into one aggregated entry per top-level directory (root files under
+// "./"), so the reported count stays proportional to the number of touched
+// directories, not the number of touched files. Pre-existing aggregated tree
+// summaries pass through untouched.
+func boundChanges(changes []Change) []Change {
+	individual := 0
+	for i := range changes {
+		if !changes[i].Aggregated {
+			individual++
+		}
+	}
+	if individual <= maxReportedIndividualChanges {
+		return changes
+	}
+	type aggregate struct {
+		kind  ChangeKind
+		count int
+	}
+	groups := map[string]*aggregate{}
+	order := make([]string, 0)
+	kept := make([]Change, 0, len(changes))
+	for _, change := range changes {
+		if change.Aggregated {
+			kept = append(kept, change)
+			continue
+		}
+		key := topLevelDirectory(change.Path)
+		group, ok := groups[key]
+		if !ok {
+			group = &aggregate{kind: change.Kind}
+			groups[key] = group
+			order = append(order, key)
+		}
+		group.count++
+	}
+	for _, key := range order {
+		group := groups[key]
+		kept = append(kept, Change{Path: key, Kind: group.kind, Aggregated: true, Count: group.count})
+	}
+	sort.Slice(kept, func(i, j int) bool { return kept[i].Path < kept[j].Path })
+	return kept
+}
+
+// topLevelDirectory returns the first path segment with a trailing slash
+// ("src/api/x.ts" → "src/"), or "./" for a file sitting directly in the
+// workspace root. Paths use forward slashes (snapshotWorkspace normalizes them).
+func topLevelDirectory(path string) string {
+	path = filepath.ToSlash(path)
+	if index := strings.IndexByte(path, '/'); index >= 0 {
+		return path[:index+1]
+	}
+	return "./"
 }
 
 func snapshotWorkspace(root string) (map[string]fileFingerprint, bool) {
@@ -153,9 +217,30 @@ func protectedObservationDirectory(name string) bool {
 	}
 }
 
+// generatedObservationDirectory reports whether a directory is machine-generated
+// build output, a dependency install tree, or a dev-server/framework scratch
+// dir. Those are recorded as a single aggregated tree fingerprint and never
+// descended into: a running dev server (Vite/SvelteKit/Next/Nuxt/Astro/etc.)
+// continuously rewrites files under these paths in the background, so
+// enumerating them would attribute thousands of spurious per-file changes to
+// every command the agent runs — flooding the tool result and the FILES sidebar
+// that re-scans each changed path on every frame, which used to grind the whole
+// TUI to a halt while a dev server was up.
 func generatedObservationDirectory(name string) bool {
 	switch name {
-	case "node_modules", ".pnpm-store", ".yarn", "dist", "coverage", ".cache":
+	case
+		// Dependency install trees / package-manager caches.
+		"node_modules", ".pnpm-store", ".yarn", ".npm", "bower_components",
+		// JS/TS build output, framework caches, and dev-server scratch dirs.
+		"dist", "build", "out", ".next", ".nuxt", ".svelte-kit", ".astro",
+		".vite", ".turbo", ".parcel-cache", ".cache", ".output", ".vercel",
+		".netlify", ".docusaurus", ".angular", ".expo",
+		// Test / coverage artifacts.
+		"coverage", ".nyc_output",
+		// Other-language build output, caches, and virtualenvs.
+		"target", ".gradle", ".terraform", ".serverless",
+		"__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox",
+		".venv", "venv":
 		return true
 	default:
 		return false

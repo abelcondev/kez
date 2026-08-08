@@ -293,6 +293,10 @@ type model struct {
 	// row: its edit cards tint in the chat (rowTouchesSelectedFile) and a second
 	// click opens the drill-in file view. "" when nothing is selected; Esc clears.
 	selectedFile string
+	// touchedFilesMemo caches the touched-file roster (files_panel.go) across the
+	// several calls each render makes. Behind a pointer so it survives the
+	// value-model's copies; nil is safe (touchedFiles just recomputes).
+	touchedFilesMemo *touchedFilesRosterCache
 	// fileView is the drill-in view for a touched file (file_view.go): while
 	// active the chat column's body shows the file's diff/content instead of the
 	// transcript, mirroring the subchat drill-in.
@@ -858,6 +862,7 @@ func newModel(ctx context.Context, options Options) model {
 		ctx:                         ctx,
 		cwd:                         cwd,
 		appVersion:                  strings.TrimSpace(options.Version),
+		touchedFilesMemo:            &touchedFilesRosterCache{},
 		swarmDoneAt:                 map[string]time.Time{},
 		userCommands:                loadedUserCommands,
 		loadSkills:                  options.LoadSkills,

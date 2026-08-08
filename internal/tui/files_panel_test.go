@@ -331,3 +331,36 @@ func TestSidebarHasContentForLiveWrite(t *testing.T) {
 		t.Fatal("a live in-flight write must count as sidebar content")
 	}
 }
+
+// TestTouchedFilesMemoizesAndInvalidates: the roster is cached across the several
+// calls each render makes (a matching signature serves the cached slice verbatim),
+// and a new tool-result row invalidates the cache so the roster stays correct.
+func TestTouchedFilesMemoizesAndInvalidates(t *testing.T) {
+	m := filesPanelTestModel()
+	m.touchedFilesMemo = &touchedFilesRosterCache{}
+	first := m.touchedFiles()
+	if !m.touchedFilesMemo.valid {
+		t.Fatal("expected the cache to be populated after the first call")
+	}
+	// Poison the cache: with the signature unchanged, the next call must serve the
+	// cached (poisoned) slice — proving it did not re-scan the transcript.
+	m.touchedFilesMemo.files = []touchedFile{{path: "SENTINEL"}}
+	if got := m.touchedFiles(); len(got) != 1 || got[0].path != "SENTINEL" {
+		t.Fatalf("expected the cached roster to be reused, got %+v", got)
+	}
+	// A new tool-result row changes the signature and must invalidate the cache.
+	m.transcript = append(m.transcript, transcriptRow{
+		kind: rowToolResult, tool: "edit_file", id: "f4", status: tools.StatusOK,
+		text:         "tool result: edit_file ok Edited web/new.ts.",
+		changedFiles: []string{"web/new.ts"},
+	})
+	got := m.touchedFiles()
+	for _, f := range got {
+		if f.path == "SENTINEL" {
+			t.Fatal("stale cache served after the transcript changed")
+		}
+	}
+	if len(got) != len(first)+1 {
+		t.Fatalf("roster after append = %d files, want %d", len(got), len(first)+1)
+	}
+}
