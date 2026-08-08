@@ -1,11 +1,23 @@
 # Zero build/test/lint targets. AGENTS.md says "Build with `make`" and "Run `make
 # lint` before opening a PR" — these targets back those instructions.
 .DEFAULT_GOAL := build
-.PHONY: build build-all test test-race vet fmt fmt-check lint tidy clean baseline help
+.PHONY: build build-all install test test-race vet fmt fmt-check lint tidy clean baseline help
 
 # Build the main CLI binary into ./zero.
 build:
 	go build -o kez ./cmd/kez
+
+# Build from source and install the CLI to INSTALL_DIR (default ~/.local/bin).
+# This is the supported way to run your local changes: scripts/install.sh pulls
+# prebuilt binaries from GitHub Releases, so it will NOT contain unreleased local
+# fixes. On macOS the binary is re-signed ad-hoc so Sequoia's code-signing
+# monitor does not SIGKILL it ("zsh: killed kez").
+INSTALL_DIR ?= $(HOME)/.local/bin
+install:
+	@mkdir -p "$(INSTALL_DIR)"
+	go build -o "$(INSTALL_DIR)/kez" ./cmd/kez
+	@if [ "$$(uname)" = "Darwin" ]; then codesign --force --sign - "$(INSTALL_DIR)/kez" >/dev/null 2>&1 && echo "re-signed for macOS"; fi
+	@echo "installed kez -> $(INSTALL_DIR)/kez"
 
 # Build every command in cmd/.
 build-all:

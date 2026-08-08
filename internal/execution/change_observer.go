@@ -58,21 +58,25 @@ type fileFingerprint struct {
 // flood the Files panel.
 type ChangeObserver struct {
 	root   string
+	ignore *ignoreMatcher
 	before map[string]fileFingerprint
 	valid  bool
 }
 
 func NewChangeObserver(root string) *ChangeObserver {
 	root = filepath.Clean(strings.TrimSpace(root))
-	before, ok := snapshotWorkspace(root)
-	return &ChangeObserver{root: root, before: before, valid: ok}
+	// Load the ignore rules once and reuse them for both the before and after
+	// snapshots so a mid-command .gitignore edit can't desync the two passes.
+	ignore := loadIgnoreMatcher(root)
+	before, ok := snapshotWorkspace(root, ignore)
+	return &ChangeObserver{root: root, ignore: ignore, before: before, valid: ok}
 }
 
 func (observer *ChangeObserver) Changes() []Change {
 	if observer == nil || !observer.valid {
 		return nil
 	}
-	after, ok := snapshotWorkspace(observer.root)
+	after, ok := snapshotWorkspace(observer.root, observer.ignore)
 	if !ok {
 		return nil
 	}
@@ -152,7 +156,7 @@ func topLevelDirectory(path string) string {
 	return "./"
 }
 
-func snapshotWorkspace(root string) (map[string]fileFingerprint, bool) {
+func snapshotWorkspace(root string, ignore *ignoreMatcher) (map[string]fileFingerprint, bool) {
 	if root == "" || root == "." {
 		return nil, false
 	}
@@ -170,17 +174,28 @@ func snapshotWorkspace(root string) (map[string]fileFingerprint, bool) {
 		if err != nil || relative == "." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
 			return nil
 		}
+		slashRelative := filepath.ToSlash(relative)
 		if entry.IsDir() {
 			if protectedObservationDirectory(entry.Name()) {
 				return filepath.SkipDir
 			}
+			// A git-ignored directory is generated/ephemeral: prune it entirely so
+			// a background dev server rewriting it can't attribute spurious changes
+			// to every command. Unlike generatedObservationDirectory it is not even
+			// recorded as an aggregated tree, since the user never tracks it.
+			if ignore.ignored(slashRelative, true) {
+				return filepath.SkipDir
+			}
 			if generatedObservationDirectory(entry.Name()) {
-				files[filepath.ToSlash(relative)+"/"] = generatedTreeFingerprint(path)
+				files[slashRelative+"/"] = generatedTreeFingerprint(path)
 				return filepath.SkipDir
 			}
 			return nil
 		}
 		if !entry.Type().IsRegular() {
+			return nil
+		}
+		if ignore.ignored(slashRelative, false) {
 			return nil
 		}
 		if len(files) >= maxObservedFiles {
@@ -199,7 +214,7 @@ func snapshotWorkspace(root string) (map[string]fileFingerprint, bool) {
 				hashedBytes += info.Size()
 			}
 		}
-		files[filepath.ToSlash(relative)] = fingerprint
+		files[slashRelative] = fingerprint
 		return nil
 	})
 	if err != nil {

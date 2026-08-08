@@ -139,3 +139,32 @@ func TestBoundChangesAggregatesOverBudget(t *testing.T) {
 		t.Fatalf("boundChanges over budget = %#v, want per-top-dir aggregates %#v", got, want)
 	}
 }
+
+// TestChangeObserverHonorsGitignore: the integral fix — any path git ignores is
+// pruned from the walk entirely (ignored dirs are not even recorded as an
+// aggregated tree), so a project's own build/data/log paths never flood a
+// command's change list regardless of framework. Tracked files still surface.
+func TestChangeObserverHonorsGitignore(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("dist-custom/\n*.log\n/local-data\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	observer := NewChangeObserver(root)
+	for _, path := range []string{
+		filepath.Join(root, "dist-custom", "bundle.js"),
+		filepath.Join(root, "app.log"),
+		filepath.Join(root, "local-data", "db.sqlite"),
+		filepath.Join(root, "src", "app.ts"),
+	} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := []Change{{Path: "src/app.ts", Kind: ChangeCreated}}
+	if got := observer.Changes(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("Changes() = %#v, want only the non-ignored file %#v", got, want)
+	}
+}
