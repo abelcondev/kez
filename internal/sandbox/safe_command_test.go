@@ -490,3 +490,69 @@ func TestAstCommandFieldsSkipsDynamicArgument(t *testing.T) {
 		t.Errorf("DetectInteractiveCommand(%q) = %+v, want interactive Command=%q", genuine, got, "git rebase -i")
 	}
 }
+
+func TestDetectLongRunningCommandBlocksDevServers(t *testing.T) {
+	commands := []string{
+		"bun run dev",
+		"npm run dev",
+		"pnpm dev",
+		"yarn dev",
+		"npm start",
+		"vite",
+		"vite dev",
+		"vite preview",
+		"next dev",
+		"nuxt dev",
+		"astro dev",
+		"wrangler dev",
+		"wrangler pages dev",
+		"netlify dev",
+		"nodemon server.js",
+		"serve dist",
+		"npx vite",
+		"bunx wrangler dev",
+		"deno task dev",
+		"node --watch server.js",
+		"tsc --watch",
+		"php artisan serve",
+		"python3 -m http.server 8000",
+		"cd web && bun run dev",
+	}
+	for _, command := range commands {
+		if result := DetectLongRunningCommand(command, "linux"); !result.LongRunning {
+			t.Errorf("DetectLongRunningCommand(%q) = not long-running, want long-running", command)
+		}
+	}
+}
+
+func TestDetectLongRunningCommandAllowsOneShots(t *testing.T) {
+	commands := []string{
+		"bun run build",
+		"npm run test",
+		"npm install",
+		"yarn build",
+		"go test ./...",
+		"ls -la",
+		"git status",
+		"cat package.json",
+		"node scripts/seed.js",
+		"npx prettier --write .",
+		"echo 'bun run dev'", // quoted argument, not an invocation
+		"curl http://localhost:5173",
+	}
+	for _, command := range commands {
+		if result := DetectLongRunningCommand(command, "linux"); result.LongRunning {
+			t.Errorf("DetectLongRunningCommand(%q) = long-running (%q), want allowed", command, result.Command)
+		}
+	}
+}
+
+func TestDetectLongRunningCommandSuggestsExecCommand(t *testing.T) {
+	result := DetectLongRunningCommand("bun run dev", "linux")
+	if !result.LongRunning {
+		t.Fatal("expected bun run dev to be long-running")
+	}
+	if !strings.Contains(result.Suggestion, "exec_command") {
+		t.Fatalf("suggestion should redirect to exec_command, got %q", result.Suggestion)
+	}
+}

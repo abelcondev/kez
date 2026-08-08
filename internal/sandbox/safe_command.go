@@ -682,6 +682,194 @@ func splitShellSegments(command string) []string {
 	return segments
 }
 
+// LongRunningCommandResult describes whether a command starts a long-running
+// server/watcher that never exits on its own (a dev server, file watcher,
+// process supervisor). Such a command run through the one-shot bash tool would
+// hold the turn until the timeout fires; it belongs in a background exec_command
+// session instead.
+type LongRunningCommandResult struct {
+	LongRunning bool
+	Command     string
+	Reason      string
+	Suggestion  string
+}
+
+// longRunningSuggestion is the shared recovery guidance: route the process to a
+// background session tool.
+const longRunningSuggestion = "Start it with the exec_command tool instead: it launches the process in the background and returns a session_id you can poll with write_stdin (empty chars) and stop when done. The one-shot bash tool runs to completion, so a process that never exits would hold the turn until it times out."
+
+// longRunningSegments are multi-word invocations that start a server/watcher.
+// Matched at the command boundary like interactiveSegments.
+var longRunningSegments = []struct{ match, reason string }{
+	{"next dev", "the Next.js dev server"},
+	{"next start", "the Next.js production server"},
+	{"nuxt dev", "the Nuxt dev server"},
+	{"astro dev", "the Astro dev server"},
+	{"astro preview", "the Astro preview server"},
+	{"remix dev", "the Remix dev server"},
+	{"ng serve", "the Angular dev server"},
+	{"wrangler dev", "the Wrangler/Workers dev server"},
+	{"wrangler pages dev", "the Wrangler Pages dev server"},
+	{"netlify dev", "the Netlify dev server"},
+	{"gatsby develop", "the Gatsby dev server"},
+	{"docusaurus start", "the Docusaurus dev server"},
+	{"expo start", "the Expo dev server"},
+	{"rails server", "the Rails server"},
+	{"rails s", "the Rails server"},
+	{"php artisan serve", "the Laravel dev server"},
+	{"hugo server", "the Hugo dev server"},
+	{"jekyll serve", "the Jekyll dev server"},
+	{"webpack serve", "webpack serve"},
+	{"vite dev", "the Vite dev server"},
+	{"vite preview", "the Vite preview server"},
+	{"python -m http.server", "python's http.server"},
+	{"python3 -m http.server", "python's http.server"},
+	{"flask run", "the Flask dev server"},
+}
+
+// longRunningPrograms are bare executables that are servers/watchers regardless
+// of arguments; keyed to a human-readable name.
+var longRunningPrograms = map[string]string{
+	"vite":               "the Vite dev server",
+	"nodemon":            "nodemon (restart-on-change runner)",
+	"serve":              "the `serve` static server",
+	"http-server":        "http-server",
+	"live-server":        "live-server",
+	"browser-sync":       "browser-sync",
+	"webpack-dev-server": "webpack-dev-server",
+	"miniflare":          "the Miniflare Workers runtime",
+	"uvicorn":            "the Uvicorn server",
+	"gunicorn":           "the Gunicorn server",
+}
+
+// packageScriptRunners run a named package.json/deno script; the script name
+// (dev/start/serve/…) determines whether it is long-running.
+var packageScriptRunners = map[string]bool{
+	"npm": true, "pnpm": true, "yarn": true, "bun": true, "deno": true,
+}
+
+// packageExecRunners execute a package binary directly (npx vite, bunx wrangler
+// dev); the real program follows, so the detector recurses into the remainder.
+var packageExecRunners = map[string]bool{
+	"npx": true, "bunx": true, "pnpx": true,
+}
+
+// longRunningScriptNames are the script names that denote a server/watcher.
+var longRunningScriptNames = map[string]bool{
+	"dev": true, "start": true, "serve": true, "preview": true,
+	"watch": true, "develop": true,
+}
+
+// DetectLongRunningCommand reports whether command launches a long-running
+// server/watcher that should run in a background session instead of the
+// blocking bash tool. goos is accepted for symmetry with DetectInteractiveCommand;
+// the rules are platform-independent.
+func DetectLongRunningCommand(command string, goos string) LongRunningCommandResult {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return LongRunningCommandResult{}
+	}
+	if goos == "" {
+		goos = runtime.GOOS
+	}
+	normalized := normalizeWhitespace(command)
+	for _, segment := range splitShellSegments(normalized) {
+		fields := strings.Fields(segment)
+		first := firstProgram(fields)
+		if first == "" {
+			continue
+		}
+		if payload := shellDashCPayload(first, fields); payload != "" {
+			if inner := DetectLongRunningCommand(payload, goos); inner.LongRunning {
+				return inner
+			}
+			continue
+		}
+		if hit, ok := matchLongRunning(first, fields, goos); ok {
+			return hit
+		}
+	}
+	return LongRunningCommandResult{}
+}
+
+func matchLongRunning(first string, fields []string, goos string) (LongRunningCommandResult, bool) {
+	body := strings.ToLower(commandBody(fields))
+	// Multi-word server invocations first (most specific).
+	for _, seg := range longRunningSegments {
+		if body == seg.match || strings.HasPrefix(body, seg.match+" ") {
+			return longRunningHit(seg.match, seg.reason), true
+		}
+	}
+	// A --watch process (tsc/jest/vitest/node --watch, …) runs until interrupted.
+	for _, field := range fields {
+		switch field {
+		case "--watch", "--watchAll", "--watch-path":
+			return longRunningHit(first, "a --watch process that reruns until interrupted"), true
+		}
+	}
+	// npx/bunx/pnpx <program …>: recurse into the executed program.
+	if packageExecRunners[first] {
+		if remainder := remainderAfterProgram(first, fields); remainder != "" {
+			if inner := DetectLongRunningCommand(remainder, goos); inner.LongRunning {
+				return inner, true
+			}
+		}
+	}
+	// npm/pnpm/yarn/bun/deno <script>: long-running when the script name says so.
+	if packageScriptRunners[first] {
+		if name, ok := packageScriptName(first, fields); ok && longRunningScriptNames[name] {
+			return longRunningHit(first+" "+name, "a long-running \""+name+"\" script"), true
+		}
+	}
+	// Bare server/watcher executables.
+	if reason, ok := longRunningPrograms[first]; ok {
+		return longRunningHit(first, reason), true
+	}
+	return LongRunningCommandResult{}, false
+}
+
+func longRunningHit(command, reason string) LongRunningCommandResult {
+	return LongRunningCommandResult{
+		LongRunning: true,
+		Command:     command,
+		Reason:      reason + " does not exit on its own",
+		Suggestion:  longRunningSuggestion,
+	}
+}
+
+// remainderAfterProgram returns the command text following the named runner
+// token, so a package-exec runner (npx/bunx) can be re-inspected by the program
+// it launches.
+func remainderAfterProgram(program string, fields []string) string {
+	start := programIndex(program, fields)
+	if start < 0 || start+1 >= len(fields) {
+		return ""
+	}
+	return strings.Join(fields[start+1:], " ")
+}
+
+// packageScriptName returns the first positional script/subcommand name passed
+// to a package-script runner, skipping flags and the run/exec/task keywords
+// (`npm run dev` → "dev", `yarn dev` → "dev", `deno task dev` → "dev").
+func packageScriptName(program string, fields []string) (string, bool) {
+	start := programIndex(program, fields)
+	if start < 0 {
+		return "", false
+	}
+	for _, arg := range fields[start+1:] {
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		lower := strings.ToLower(arg)
+		switch lower {
+		case "run", "run-script", "exec", "task":
+			continue
+		}
+		return lower, true
+	}
+	return "", false
+}
+
 func normalizeWhitespace(value string) string {
 	return strings.Join(strings.Fields(value), " ")
 }

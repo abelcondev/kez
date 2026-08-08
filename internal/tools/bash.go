@@ -117,6 +117,15 @@ func (tool bashTool) run(ctx context.Context, args map[string]any, engine *zeroS
 		return interactiveBlockResult(interactive)
 	}
 
+	// Route long-running servers/watchers (dev servers, `--watch`, nodemon, …) to
+	// a background exec_command session instead of running them here: the one-shot
+	// bash tool blocks until the command exits, so a process that never exits would
+	// hold the turn until the timeout — and while it runs the workspace churn it
+	// produces would otherwise be re-diffed on every later command.
+	if longRunning := zeroSandbox.DetectLongRunningCommand(commandText, runtime.GOOS); longRunning.LongRunning {
+		return longRunningBlockResult(longRunning)
+	}
+
 	absoluteCwd, relativeCwd, err := resolveScopedPath(tool.workspaceRoot, tool.scope, cwd)
 	if err != nil {
 		return errorResult("Error running bash: " + err.Error())
@@ -380,6 +389,31 @@ func interactiveBlockResult(detection zeroSandbox.InteractiveCommandResult) Resu
 		},
 		Display: Display{
 			Summary: "Blocked interactive command: " + detection.Command,
+			Kind:    "shell",
+		},
+	}
+}
+
+// longRunningBlockResult builds the structured Result returned when a bash call
+// is refused because it launches a long-running server/watcher that belongs in a
+// background exec_command session. Like interactiveBlockResult, the block is
+// surfaced in Output, Meta, and Display so the model gets a clear, actionable
+// redirect instead of blocking the turn until the timeout.
+func longRunningBlockResult(detection zeroSandbox.LongRunningCommandResult) Result {
+	message := fmt.Sprintf(
+		"Error: Blocked long-running command %q before execution: %s. The bash tool would block this turn until it timed out.\nSuggestion: %s",
+		detection.Command, detection.Reason, detection.Suggestion,
+	)
+	return Result{
+		Status: StatusError,
+		Output: message,
+		Meta: map[string]string{
+			"exit_code":    "-1",
+			"safety_block": "long_running_command",
+			"safety_cmd":   detection.Command,
+		},
+		Display: Display{
+			Summary: "Use exec_command for: " + detection.Command,
 			Kind:    "shell",
 		},
 	}

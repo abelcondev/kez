@@ -902,3 +902,34 @@ func TestAppendSandboxBlocks(t *testing.T) {
 		t.Fatalf("empty stderr must not yield a leading newline: %q", block)
 	}
 }
+
+// TestBashToolBlocksLongRunningCommand: a dev server invoked through the one-shot
+// bash tool is refused before execution and redirected to exec_command, instead
+// of blocking the turn until the timeout.
+func TestBashToolBlocksLongRunningCommand(t *testing.T) {
+	root := t.TempDir()
+	result := NewScopedBashTool(root, nil).Run(context.Background(), map[string]any{
+		"command": "bun run dev",
+	})
+	if result.Status != StatusError {
+		t.Fatalf("expected error status for a dev server, got %s: %s", result.Status, result.Output)
+	}
+	if result.Meta["safety_block"] != "long_running_command" {
+		t.Fatalf("expected long_running_command safety_block, got %q", result.Meta["safety_block"])
+	}
+	if !strings.Contains(result.Output, "exec_command") {
+		t.Fatalf("expected redirect to exec_command in output, got %q", result.Output)
+	}
+}
+
+// TestBashToolAllowsOneShotBuild: a one-shot build script is not mistaken for a
+// long-running server.
+func TestBashToolAllowsOneShotBuild(t *testing.T) {
+	root := t.TempDir()
+	result := NewScopedBashTool(root, nil).Run(context.Background(), map[string]any{
+		"command": helperCommand("success"),
+	})
+	if result.Status != StatusOK {
+		t.Fatalf("expected ok for a one-shot command, got %s: %s", result.Status, result.Output)
+	}
+}

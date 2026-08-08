@@ -19,6 +19,14 @@ const (
 	processStopTimeout        = 3 * time.Second
 	maxInteractiveYield       = 30 * time.Second
 	maxEmptyPollYield         = 5 * time.Minute
+	// collectDrainInterval caps how often collect drains a continuously-writing
+	// process. Without it, a process that writes without pause (a dev server's
+	// HMR logs, `yes`) wakes the drain loop on every write via the notify channel,
+	// and each drain does an O(maxPendingOutputBytes) memmove once the 2 MiB cap
+	// is reached — pegging a core for the whole yield window. Coalescing drains to
+	// ~40/sec captures the same output (the buffer accumulates between drains,
+	// bounded to 2 MiB either way) at a fraction of the CPU.
+	collectDrainInterval = 25 * time.Millisecond
 )
 
 var (
@@ -426,51 +434,73 @@ func (process *managedProcess) collect(ctx context.Context, wait time.Duration) 
 	deadline := time.Now().Add(wait)
 	var output []byte
 	truncated := false
-	finish := func() (string, bool) {
-		truncated = truncated || process.output.consumeTruncated()
-		return string(output), truncated
-	}
-	for {
-		if chunk := process.output.drain(); len(chunk) > 0 {
+	appendChunk := func(chunk []byte) {
+		if len(chunk) > 0 {
 			var chunkTruncated bool
 			output, chunkTruncated = appendBoundedProcessOutput(output, chunk)
 			truncated = truncated || chunkTruncated
+		}
+		truncated = truncated || process.output.consumeTruncated()
+	}
+	finish := func() (string, bool) {
+		appendChunk(process.output.drain())
+		return string(output), truncated
+	}
+	for {
+		gotData := false
+		if chunk := process.output.drain(); len(chunk) > 0 {
+			appendChunk(chunk)
+			gotData = true
+		} else {
 			truncated = truncated || process.output.consumeTruncated()
-			if time.Now().After(deadline) {
-				return finish()
-			}
-			continue
 		}
 		if process.doneClosed() {
-			var chunkTruncated bool
-			output, chunkTruncated = appendBoundedProcessOutput(output, process.output.drain())
-			truncated = truncated || chunkTruncated
 			return finish()
 		}
 		remaining := time.Until(deadline)
 		if remaining <= 0 {
 			return finish()
 		}
+		if gotData {
+			// Just collected output: coalesce further writes by waiting a short
+			// interval before the next drain instead of waking on every write —
+			// this bounds the drain/memmove rate for a chatty process. Still
+			// returns promptly on exit or cancellation.
+			timer := time.NewTimer(min(remaining, collectDrainInterval))
+			select {
+			case <-process.done:
+			case <-ctx.Done():
+				drainTimer(timer)
+				return finish()
+			case <-timer.C:
+			}
+			drainTimer(timer)
+			continue
+		}
+		// Idle: block until the process writes, exits, the caller cancels, or the
+		// deadline elapses.
 		timer := time.NewTimer(remaining)
 		select {
 		case <-process.output.notify:
 		case <-process.done:
 		case <-ctx.Done():
-			if !timer.Stop() {
-				select {
-				case <-timer.C:
-				default:
-				}
-			}
+			drainTimer(timer)
 			return finish()
 		case <-timer.C:
+			drainTimer(timer)
 			return finish()
 		}
-		if !timer.Stop() {
-			select {
-			case <-timer.C:
-			default:
-			}
+		drainTimer(timer)
+	}
+}
+
+// drainTimer stops timer and clears its channel if it already fired, so the
+// timer can be discarded without leaking a pending tick.
+func drainTimer(timer *time.Timer) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
 		}
 	}
 }
