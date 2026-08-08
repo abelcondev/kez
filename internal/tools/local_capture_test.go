@@ -63,8 +63,12 @@ func TestCaptureArtifactBrowserScreenshotWritesMetadataAndSanitizesName(t *testi
 	if _, err := os.Stat(path); err != nil {
 		t.Fatalf("artifact missing: %v", err)
 	}
+	metaPath := filepath.Join(dir, ".meta", "proof.png.json")
+	if _, err := os.Stat(path + ".json"); !os.IsNotExist(err) {
+		t.Fatalf("metadata should not sit next to the artifact, stat err = %v", err)
+	}
 	var metadata map[string]any
-	data, err := os.ReadFile(path + ".json")
+	data, err := os.ReadFile(metaPath)
 	if err != nil {
 		t.Fatalf("metadata missing: %v", err)
 	}
@@ -74,7 +78,7 @@ func TestCaptureArtifactBrowserScreenshotWritesMetadataAndSanitizesName(t *testi
 	if metadata["action"] != "browser_screenshot" || metadata["driver"] != "browser" || metadata["path"] != path {
 		t.Fatalf("metadata = %#v", metadata)
 	}
-	if !reflect.DeepEqual(result.ChangedFiles, []string{path, path + ".json"}) {
+	if !reflect.DeepEqual(result.ChangedFiles, []string{path, metaPath}) {
 		t.Fatalf("changed files = %#v", result.ChangedFiles)
 	}
 }

@@ -328,6 +328,14 @@ type artifactMetadata struct {
 	CreatedAt time.Time `json:"createdAt"`
 }
 
+// metaSidecarPath returns the metadata sidecar path for an artifact, placing it
+// under a .meta/ subdirectory alongside the artifact (e.g. foo.png ->
+// .meta/foo.png.json). Keeping the JSON out of the main directory stops it from
+// interleaving with the artifacts themselves when the folder is listed.
+func metaSidecarPath(artifactPath string) string {
+	return filepath.Join(filepath.Dir(artifactPath), ".meta", filepath.Base(artifactPath)+".json")
+}
+
 func writeArtifactMetadata(path string, metadata artifactMetadata) error {
 	metadata.CreatedAt = time.Now().UTC()
 	data, err := json.MarshalIndent(metadata, "", "  ")
@@ -335,7 +343,11 @@ func writeArtifactMetadata(path string, metadata artifactMetadata) error {
 		return err
 	}
 	data = append(data, '\n')
-	return os.WriteFile(path+".json", data, 0o600)
+	metaPath := metaSidecarPath(path)
+	if err := os.MkdirAll(filepath.Dir(metaPath), 0o700); err != nil {
+		return err
+	}
+	return os.WriteFile(metaPath, data, 0o600)
 }
 
 func captureOKResult(driver string, request captureArtifactRequest, path string, helperResult localcontrol.CommandResult) Result {
@@ -352,7 +364,7 @@ func captureOKResult(driver string, request captureArtifactRequest, path string,
 			"action":        request.action,
 			"driver":        driver,
 		},
-		ChangedFiles: []string{path, path + ".json"},
+		ChangedFiles: []string{path, metaSidecarPath(path)},
 		Display: Display{
 			Summary: request.action + " captured",
 			Kind:    "artifact",
