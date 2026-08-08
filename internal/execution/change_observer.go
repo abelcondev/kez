@@ -235,6 +235,11 @@ func generatedObservationDirectory(name string) bool {
 		"dist", "build", "out", ".next", ".nuxt", ".svelte-kit", ".astro",
 		".vite", ".turbo", ".parcel-cache", ".cache", ".output", ".vercel",
 		".netlify", ".docusaurus", ".angular", ".expo",
+		// Cloudflare Workers local runtime state: wrangler/miniflare persist KV,
+		// D1 (SQLite), R2, cache, and durable-object storage under these and
+		// rewrite them on every request — a running `wrangler dev` churns them
+		// constantly, independent of what the agent edits.
+		".wrangler", ".mf", ".miniflare",
 		// Test / coverage artifacts.
 		"coverage", ".nyc_output",
 		// Other-language build output, caches, and virtualenvs.

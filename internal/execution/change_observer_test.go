@@ -82,6 +82,7 @@ func TestChangeObserverAggregatesDevServerAndBuildTrees(t *testing.T) {
 		filepath.Join(root, "build", "index.html"),
 		filepath.Join(root, "target", "debug", "app"),
 		filepath.Join(root, "__pycache__", "mod.pyc"),
+		filepath.Join(root, ".wrangler", "state", "v3", "d1", "db.sqlite"),
 		filepath.Join(root, "src", "app.ts"),
 	} {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -95,6 +96,7 @@ func TestChangeObserverAggregatesDevServerAndBuildTrees(t *testing.T) {
 		{Path: ".next/", Kind: ChangeCreated, Aggregated: true, Count: 1},
 		{Path: ".svelte-kit/", Kind: ChangeCreated, Aggregated: true, Count: 1},
 		{Path: ".vite/", Kind: ChangeCreated, Aggregated: true, Count: 1},
+		{Path: ".wrangler/", Kind: ChangeCreated, Aggregated: true, Count: 1},
 		{Path: "__pycache__/", Kind: ChangeCreated, Aggregated: true, Count: 1},
 		{Path: "build/", Kind: ChangeCreated, Aggregated: true, Count: 1},
 		{Path: "src/app.ts", Kind: ChangeCreated},
