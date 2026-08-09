@@ -44,3 +44,32 @@ func TestSupportsVision(t *testing.T) {
 		})
 	}
 }
+
+func TestSupportsVisionWithOverride(t *testing.T) {
+	registry, err := DefaultRegistry()
+	if err != nil {
+		t.Fatalf("DefaultRegistry returned error: %v", err)
+	}
+	yes, no := true, false
+
+	// A catalog-unknown custom id ("k3") is refused by detection, but an explicit
+	// override forces the answer either way; nil falls through to detection.
+	cases := []struct {
+		name     string
+		override *bool
+		modelID  string
+		want     bool
+	}{
+		{name: "override true beats unknown-model refusal", override: &yes, modelID: "k3", want: true},
+		{name: "override false forces refusal on a vision model", override: &no, modelID: "gemini-2.5-pro", want: false},
+		{name: "nil override falls through to detection (vision)", override: nil, modelID: "gemini-2.5-pro", want: true},
+		{name: "nil override falls through to detection (unknown)", override: nil, modelID: "k3", want: false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := SupportsVisionWithOverride(testCase.override, registry, testCase.modelID); got != testCase.want {
+				t.Fatalf("SupportsVisionWithOverride(%v, %q) = %v, want %v", testCase.override, testCase.modelID, got, testCase.want)
+			}
+		})
+	}
+}

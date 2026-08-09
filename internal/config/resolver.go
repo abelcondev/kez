@@ -546,6 +546,9 @@ func mergeProfile(base ProviderProfile, next ProviderProfile) ProviderProfile {
 	if next.ParseThinkTags != nil {
 		base.ParseThinkTags = next.ParseThinkTags
 	}
+	if next.SupportsVision != nil {
+		base.SupportsVision = next.SupportsVision
+	}
 	return base
 }
 

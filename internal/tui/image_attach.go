@@ -87,13 +87,21 @@ func stripMatchingQuotes(s string) (string, bool) {
 }
 
 // modelSupportsVisionTUI reports whether the active model can accept image
-// input. It checks three sources in order:
+// input. It checks sources in order:
+//  0. An explicit config override (providerProfile.SupportsVision) — user's
+//     declared answer for a custom model the catalog cannot know; wins over all
 //  1. The curated model registry (catalog authority + name heuristic)
 //  2. The discovered model list from models.dev (if the live model picker
 //     fetched it) — this carries InputModalities from models.dev, which
 //     includes "image" for vision-capable models
 //  3. Falls back to the name heuristic for unknown models
 func (m model) modelSupportsVisionTUI() bool {
+	// An explicit config override is the most specific signal the user can give
+	// about a custom / openai-compatible model the catalog cannot know, so it
+	// wins over every heuristic below (and over an empty model name).
+	if override := m.providerProfile.SupportsVision; override != nil {
+		return *override
+	}
 	trimmed := strings.TrimSpace(m.modelName)
 	if trimmed == "" {
 		return false

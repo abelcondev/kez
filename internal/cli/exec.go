@@ -373,7 +373,7 @@ func runExec(args []string, stdout io.Writer, stderr io.Writer, deps appDeps) in
 	// Gate against the EFFECTIVE resolved model (not the --model override). An
 	// unknown/custom id can't be confirmed vision-capable, so drop+warn rather
 	// than error: image input is best-effort, never fatal to the run.
-	if len(images) > 0 && !modelregistry.SupportsVision(modelRegistry, resolved.Provider.Model) {
+	if len(images) > 0 && !modelregistry.SupportsVisionWithOverride(resolved.Provider.SupportsVision, modelRegistry, resolved.Provider.Model) {
 		if _, err := fmt.Fprintf(stderr, "Model %s does not support image input; ignoring %d image(s).\n", resolved.Provider.Model, len(images)); err != nil {
 			return exitCrash
 		}

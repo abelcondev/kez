@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/abelcondev/kez/internal/config"
 	"github.com/abelcondev/kez/internal/tools"
 	"github.com/abelcondev/kez/internal/zeroruntime"
 )
@@ -30,6 +31,56 @@ func TestModelSupportsVisionTUI(t *testing.T) {
 		if got != tc.want {
 			t.Fatalf("modelSupportsVisionTUI(%q) = %v, want %v", tc.modelName, got, tc.want)
 		}
+	}
+}
+
+// TestModelSupportsVisionTUIConfigOverride verifies the config-declared
+// SupportsVision flag wins over the catalog / name heuristic in both
+// directions: a custom "k3" alias the catalog can't confirm accepts images when
+// declared true, and a known vision model is refused when declared false.
+func TestModelSupportsVisionTUIConfigOverride(t *testing.T) {
+	yes, no := true, false
+	cases := []struct {
+		name      string
+		modelName string
+		override  *bool
+		want      bool
+	}{
+		{name: "override true on unknown custom model", modelName: "k3", override: &yes, want: true},
+		{name: "override false on catalog vision model", modelName: "gpt-4.1", override: &no, want: false},
+		{name: "nil override keeps unknown refusal", modelName: "k3", override: nil, want: false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newModel(t.Context(), Options{
+				ModelName:       tc.modelName,
+				ProviderProfile: config.ProviderProfile{Name: "custom", Model: tc.modelName, SupportsVision: tc.override},
+			})
+			if got := m.modelSupportsVisionTUI(); got != tc.want {
+				t.Fatalf("modelSupportsVisionTUI(%q, override=%v) = %v, want %v", tc.modelName, tc.override, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestImageCommandAttachesOnConfigDeclaredVisionModel confirms /image on a
+// catalog-unknown model declared vision-capable via config actually stages the
+// image instead of hitting the refusal notice.
+func TestImageCommandAttachesOnConfigDeclaredVisionModel(t *testing.T) {
+	yes := true
+	dir := t.TempDir()
+	path := writeTestPNG(t, dir, "shot.png")
+	m := newModel(t.Context(), Options{
+		ModelName:       "k3",
+		ProviderProfile: config.ProviderProfile{Name: "custom", Model: "k3", SupportsVision: &yes},
+	})
+	m.cwd = dir
+	next := m.handleImageCommand(path)
+	if notice := lastTranscriptText(next); strings.Contains(notice, "does not support image input") {
+		t.Fatalf("declared-vision model must not refuse the image, got %q", notice)
+	}
+	if len(next.pendingImages) != 1 {
+		t.Fatalf("expected 1 staged image, got %d", len(next.pendingImages))
 	}
 }
 

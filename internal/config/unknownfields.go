@@ -88,6 +88,7 @@ var legacyJSONAliases = map[string][]string{
 		"providerKind", "catalog_id", "base_url", "api_key", "api_key_env",
 		"api_key_stored", "api_format", "auth_header", "auth_scheme",
 		"auth_header_value", "custom_headers", "model_id", "parse_think_tags",
+		"supports_vision",
 	},
 }
 

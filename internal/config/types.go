@@ -40,7 +40,15 @@ type ProviderProfile struct {
 	CustomHeaders   map[string]string `json:"customHeaders,omitempty"`
 	Model           string            `json:"model,omitempty"`
 	ParseThinkTags  *bool             `json:"parseThinkTags,omitempty"`
-	Description     string            `json:"description,omitempty"`
+	// SupportsVision overrides the vision-capability gate for this provider's
+	// model. Custom / openai-compatible models are absent from the curated
+	// catalog and often unrecognized by the name heuristic, so a real vision
+	// model (e.g. a "k3" alias in front of a multimodal endpoint) gets its
+	// images refused. Setting this to true declares the model vision-capable so
+	// images attach; false forces a hard "no". A nil pointer means "unset" —
+	// fall back to catalog / discovered / name-heuristic detection.
+	SupportsVision *bool  `json:"supportsVision,omitempty"`
+	Description    string `json:"description,omitempty"`
 }
 
 func HasProviderProfile(profile ProviderProfile) bool {
@@ -58,6 +66,7 @@ func HasProviderProfile(profile ProviderProfile) bool {
 		profile.CustomHeaders != nil ||
 		strings.TrimSpace(profile.Model) != "" ||
 		profile.ParseThinkTags != nil ||
+		profile.SupportsVision != nil ||
 		strings.TrimSpace(profile.Description) != ""
 }
 
@@ -720,6 +729,8 @@ func (profile *ProviderProfile) UnmarshalJSON(data []byte) error {
 		ModelID              string            `json:"model_id"`
 		ParseThinkTags       *bool             `json:"parseThinkTags"`
 		ParseThinkTagsSnake  *bool             `json:"parse_think_tags"`
+		SupportsVision       *bool             `json:"supportsVision"`
+		SupportsVisionSnake  *bool             `json:"supports_vision"`
 		Description          string            `json:"description"`
 	}
 
@@ -743,6 +754,7 @@ func (profile *ProviderProfile) UnmarshalJSON(data []byte) error {
 	profile.CustomHeaders = firstNonNilMap(raw.CustomHeaders, raw.CustomHeadersSnake)
 	profile.Model = strings.TrimSpace(firstNonEmpty(raw.Model, raw.ModelID))
 	profile.ParseThinkTags = firstNonNilBool(raw.ParseThinkTags, raw.ParseThinkTagsSnake)
+	profile.SupportsVision = firstNonNilBool(raw.SupportsVision, raw.SupportsVisionSnake)
 	profile.Description = strings.TrimSpace(raw.Description)
 	return nil
 }

@@ -1582,6 +1582,37 @@ func TestResolveProviderProfileParseThinkTagsFalseAlias(t *testing.T) {
 	}
 }
 
+func TestResolveProviderProfileSupportsVisionAlias(t *testing.T) {
+	// A custom "k3" provider declares vision support via the snake_case alias;
+	// Resolve must carry the explicit true through so the image gate honors it.
+	path := writeConfig(t, `{
+		"activeProvider": "custom",
+		"providers": [{
+			"name": "custom",
+			"provider_kind": "openai-compatible",
+			"base_url": "https://custom.example/v1",
+			"model_id": "k3",
+			"supports_vision": true
+		}]
+	}`)
+
+	resolved, err := Resolve(ResolveOptions{UserConfigPath: path, Env: map[string]string{}})
+	if err != nil {
+		t.Fatalf("Resolve() error = %v", err)
+	}
+	if resolved.Provider.SupportsVision == nil || !*resolved.Provider.SupportsVision {
+		t.Fatalf("SupportsVision = %#v, want explicit true", resolved.Provider.SupportsVision)
+	}
+}
+
+func TestMergeProfilePreservesSupportsVision(t *testing.T) {
+	yes := true
+	merged := mergeProfile(ProviderProfile{Name: "p"}, ProviderProfile{SupportsVision: &yes})
+	if merged.SupportsVision == nil || !*merged.SupportsVision {
+		t.Fatalf("SupportsVision = %#v, want true", merged.SupportsVision)
+	}
+}
+
 func TestResolveRejectsUnknownProviderCatalogID(t *testing.T) {
 	path := writeConfig(t, `{
 		"activeProvider": "bad",

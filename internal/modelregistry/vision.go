@@ -26,6 +26,19 @@ func SupportsVision(registry Registry, modelID string) bool {
 	return VisionCapableByName(modelID)
 }
 
+// SupportsVisionWithOverride applies an explicit config-declared override ahead
+// of the normal catalog / discovered / name detection. A non-nil override is
+// authoritative — it beats even a catalog "no" — because it is the most specific
+// signal the user can give about a custom / openai-compatible model the catalog
+// cannot know (e.g. a "k3" alias fronting a multimodal endpoint). A nil override
+// falls through to SupportsVision's usual detection.
+func SupportsVisionWithOverride(override *bool, registry Registry, modelID string) bool {
+	if override != nil {
+		return *override
+	}
+	return SupportsVision(registry, modelID)
+}
+
 // VisionCapableByName reports whether modelID names a known multimodal family.
 // It is conservative: it matches the established vision families and leaves
 // everything else refused, so a false "supported" is unlikely. Used only as a
