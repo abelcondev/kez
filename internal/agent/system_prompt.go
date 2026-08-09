@@ -432,7 +432,7 @@ func sddContext(cwd string) string {
 	// branch and the turn wastes a round-trip discovering that.
 	if branchguard.Resolve(root, os.Getenv).Enabled {
 		b.WriteString("### Branch & PR policy\n\n")
-		b.WriteString("This repo requires every change to go through a feature branch and a pull request; the default branch is protected. Before writing or editing code, create/switch to a feature branch tied to the task (`git checkout -b feat/<task-slug>`) — a compiled guard refuses code writes on a protected branch. When the task's acceptance criteria pass, push the branch and prepare a `gh pr create` command for the user to run; never merge or push to the protected branch yourself.\n\n")
+		b.WriteString("This repo requires every change to go through a feature branch and a pull request; the default branch is protected. Before writing or editing code, create/switch to a feature branch tied to the task (`git checkout -b feat/<task-slug>`) — a compiled guard refuses code writes on a protected branch. When the task's acceptance criteria pass, push the branch (`git push origin HEAD` — omit `-u`, which writes `.git/config` and the sandbox refuses) and open the proposal's PR as a draft (`gh pr create --fill --draft`), reusing the existing one if there is one; mark it ready only once every task in the proposal is done. Never merge or push to the protected branch yourself.\n\n")
 	}
 
 	b.WriteString("### ")

@@ -181,8 +181,8 @@ func runSDDApprove(root string, args []string, stdout io.Writer, stderr io.Write
 		return writeAppError(stderr, err.Error(), exitCrash)
 	}
 	fmt.Fprintf(stdout, "Approved. Wrote decision %s, appended sdd/log.md, updated sdd/index.md, reset sdd/proposal.md.\n", rel)
-	fmt.Fprintf(stdout, "Commit the decision and open its PR:\n  git add sdd/ && git commit -m %q\n  git push -u origin HEAD && gh pr create --fill\n", "docs(sdd): "+filepath.Base(rel))
-	fmt.Fprintf(stdout, "Run `kez sdd next` for the next step. Implementation for this decision stays on the same branch — one PR per proposal.\n")
+	fmt.Fprintf(stdout, "Commit the decision and open its PR as a draft (no `-u`: it writes .git/config, which the sandbox refuses):\n  git add sdd/ && git commit -m %q\n  git push origin HEAD && gh pr create --fill --draft\n", "docs(sdd): "+filepath.Base(rel))
+	fmt.Fprintf(stdout, "Run `kez sdd next` for the next step. Implementation for this decision stays on the same branch and the same draft PR — one PR per proposal, marked ready only when every task is done.\n")
 	return exitSuccess
 }
 
@@ -252,7 +252,80 @@ func runSDDDone(root string, args []string, stdout io.Writer, stderr io.Writer) 
 		return writeAppError(stderr, err.Error(), exitCrash)
 	}
 	fmt.Fprintf(stdout, "Marked %s done, appended sdd/log.md.\n", rel)
+	printProposalProgress(root, rel, stdout)
 	return exitSuccess
+}
+
+// printProposalProgress prints the task checklist for the proposal the just-closed
+// task belongs to (all tasks sharing its decision — one proposal → one PR), plus
+// guidance for the PR: refresh the body with the checklist, and mark the draft PR
+// ready only once every task in the proposal is done. It is best-effort — a read
+// error or a task with no decision link just prints nothing extra.
+func printProposalProgress(root, completedRel string, stdout io.Writer) {
+	st, err := sdd.ReadStatus(root)
+	if err != nil || len(st.Tasks) == 0 {
+		return
+	}
+	completed := refStem(completedRel)
+	decision := ""
+	for _, t := range st.Tasks {
+		if refStem(t.Name) == completed {
+			decision = refStem(t.Decision)
+			break
+		}
+	}
+	if decision == "" {
+		return // no decision link — can't scope the proposal's PR
+	}
+
+	var checklist strings.Builder
+	pending := 0
+	for _, t := range st.Tasks {
+		if refStem(t.Decision) != decision {
+			continue
+		}
+		box := "[x]"
+		if !isDoneStatus(t.Status) {
+			box = "[ ]"
+			pending++
+		}
+		checklist.WriteString("  - ")
+		checklist.WriteString(box)
+		checklist.WriteString(" ")
+		checklist.WriteString(t.Name)
+		if t.Title != "" {
+			checklist.WriteString(" — ")
+			checklist.WriteString(t.Title)
+		}
+		checklist.WriteString("\n")
+	}
+
+	fmt.Fprintf(stdout, "\nProposal tasks (this PR):\n%s", checklist.String())
+	if pending == 0 {
+		fmt.Fprintf(stdout, "\nEvery task in this proposal is done. Refresh the PR body with the checklist above, then take it out of draft:\n  gh pr edit --body \"<checklist + manual QA>\"\n  gh pr ready\n")
+	} else {
+		fmt.Fprintf(stdout, "\n%d task(s) still pending — keep them on this branch (one PR per proposal) and leave the PR a draft. Push and refresh the PR body:\n  git push origin HEAD\n  gh pr edit --body \"<checklist above + manual QA>\"\n", pending)
+	}
+}
+
+// refStem reduces an artifact reference to its bare stem so task names and
+// decision links compare regardless of form: "decisions/002-x.md", "002-x.md",
+// and "002-x" all yield "002-x".
+func refStem(ref string) string {
+	ref = strings.TrimSpace(ref)
+	if i := strings.LastIndexByte(ref, '/'); i >= 0 {
+		ref = ref[i+1:]
+	}
+	return strings.TrimSuffix(ref, ".md")
+}
+
+// isDoneStatus reports whether a task frontmatter status counts as closed.
+func isDoneStatus(status string) bool {
+	switch strings.TrimSpace(status) {
+	case "done", "completed":
+		return true
+	}
+	return false
 }
 
 // runSDDPropose drafts sdd/proposal.md from a natural-language description by
