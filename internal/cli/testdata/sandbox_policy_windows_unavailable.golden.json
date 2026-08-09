@@ -44,6 +44,9 @@
               "$WORKSPACE/.git/hooks",
               "$WORKSPACE/.git/config"
             ],
+            "writableSubpaths": [
+              "$WORKSPACE/.kez/artifacts"
+            ],
             "protectedMetadataNames": [
               ".kez",
               ".agents"
