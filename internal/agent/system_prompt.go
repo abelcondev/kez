@@ -371,6 +371,28 @@ const maxSDDContextBytes = 8 << 10 // 8 KiB
 // tasks so the agent knows the current unit of work. It resolves the knowledge
 // base at the git root (falling back to cwd) and returns "" when the workspace
 // has no sdd/ base, keeping headless/test runs deterministic.
+// sddImplementPhase reports whether the SDD loop's single next action for the
+// workspace at cwd is the implement phase (sdd.SkillImplement) — the long
+// TDD + review cycle. It mirrors the advisor the system prompt renders (same
+// root/branch resolution and ReadLoopState call), so a turn-budget bump keyed
+// on it always agrees with the on-screen "Next step". Any error, or a workspace
+// with no sdd/ base, reports false.
+func sddImplementPhase(cwd string) bool {
+	cwd = strings.TrimSpace(cwd)
+	if cwd == "" {
+		return false
+	}
+	root := FindProjectGitRoot(cwd)
+	if root == "" {
+		root = cwd
+	}
+	ls, err := sdd.ReadLoopState(root, gitBranchForPrompt(root))
+	if err != nil {
+		return false
+	}
+	return ls.Next().Skill == sdd.SkillImplement
+}
+
 func sddContext(cwd string) string {
 	cwd = strings.TrimSpace(cwd)
 	if cwd == "" {

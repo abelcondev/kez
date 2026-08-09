@@ -48,6 +48,11 @@ type LoopState struct {
 	DesignSystemReady    bool   // that decision has an approved workbench design
 }
 
+// SkillImplement names the phase skill for the implement step — the long
+// TDD (red → green → refactor) + review cycle. Exported so callers can detect
+// this phase (e.g. to widen the turn budget) without duplicating the literal.
+const SkillImplement = "sdd-implement"
+
 // NextAction is the one recommended step given a LoopState. Gate marks a step
 // that hands control to the human (review/approval) rather than doing work.
 // Skill names the built-in phase skill the agent should load before acting on
@@ -271,7 +276,7 @@ func (st LoopState) Next() NextAction {
 		}
 		return NextAction{
 			Summary: "Implement pending task " + label + " (TDD: red → green), review, then close it with `kez sdd done " + task.Name + "`. One PR per proposal.",
-			Skill:   "sdd-implement",
+			Skill:   SkillImplement,
 		}
 	}
 	// A product decision exists but no stack/architecture decision does yet: the

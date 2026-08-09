@@ -249,6 +249,15 @@ type SkillInfo struct {
 
 type Options struct {
 	MaxTurns int
+	// SDDImplementTurnBudget, when > 0, raises this run's turn ceiling to at
+	// least this value if the SDD loop position is the implement phase — the
+	// long TDD (red → green → refactor) + review cycle that routinely overruns
+	// the default budget and gets cut off mid-task. Callers set it to the
+	// thorough profile's budget ONLY when the user has NOT pinned a budget
+	// (--max-turns / /turns) or chosen a profile, so an explicit choice always
+	// wins. It only ever raises (never lowers) MaxTurns. Zero — every non-SDD
+	// path and every pinned run — is a no-op.
+	SDDImplementTurnBudget int
 	// DeferThreshold activates deferred MCP-tool loading: when the number of
 	// deferred-eligible visible tools is >= this value (and it is > 0), their
 	// full schemas are withheld and advertised as compact lines via tool_search.

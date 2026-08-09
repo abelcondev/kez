@@ -20,6 +20,7 @@ import (
 	"github.com/abelcondev/kez/internal/config"
 	"github.com/abelcondev/kez/internal/doctor"
 	"github.com/abelcondev/kez/internal/errhint"
+	"github.com/abelcondev/kez/internal/execprofile"
 	"github.com/abelcondev/kez/internal/lsp"
 	internalmcp "github.com/abelcondev/kez/internal/mcp"
 	"github.com/abelcondev/kez/internal/modelregistry"
@@ -138,7 +139,11 @@ type model struct {
 	// exactly what the profile replaced while leaving later manual overrides
 	// (/turns, Ctrl+T, /selfcorrect) alone: each knob is only reverted when it
 	// still holds the value the profile applied.
-	execProfileName              string
+	execProfileName string
+	// turnsPinned records an explicit /turns for this session: it pins the
+	// budget, so the SDD-implement auto-widen (see runAgentWithOptions) is
+	// suppressed and the user's number is honored verbatim.
+	turnsPinned                  bool
 	execProfileDisplacedMaxTurns int
 	execProfileAppliedMaxTurns   int
 	execProfileAppliedEffort     modelregistry.ReasoningEffort
@@ -5104,6 +5109,15 @@ func (m model) runAgentWithOptions(runID int, runCtx context.Context, prompt str
 		options.ReasoningEffort = string(m.reasoningEffort)
 		options.ResponseStyle = m.responseStyle
 		options.Cwd = m.cwd
+		// Widen the budget for the SDD implement phase (a long TDD + review cycle)
+		// unless the user pinned one via /turns or chose a profile. Recomputed each
+		// run so it tracks the loop position, which moves between prompts (propose →
+		// implement); the agent loop applies it only when this run is at that phase.
+		if m.execProfileName == "" && !m.turnsPinned {
+			options.SDDImplementTurnBudget = execprofile.Thorough.MaxTurns
+		} else {
+			options.SDDImplementTurnBudget = 0
+		}
 		options.Images = images
 		if m.captureRunImages != nil {
 			m.captureRunImages(images)
