@@ -34,6 +34,7 @@ type FileSystemPolicy struct {
 type WritableRoot struct {
 	Root                   string   `json:"root"`
 	ReadOnlySubpaths       []string `json:"readOnlySubpaths,omitempty"`
+	WritableSubpaths       []string `json:"writableSubpaths,omitempty"`
 	ProtectedMetadataNames []string `json:"protectedMetadataNames,omitempty"`
 }
 
@@ -69,6 +70,31 @@ func gitMetadataWriteCarveouts(root string) []string {
 	}
 }
 
+// protectedMetadataWriteCarveouts returns subpaths INSIDE a fully write-denied
+// protected metadata directory (sandboxFullyProtectedMetadataNames) that must
+// stay writable to shell commands. The inverse of gitMetadataWriteCarveouts:
+// there we deny a few paths inside an otherwise-writable .git; here we re-allow
+// a few paths inside an otherwise-denied .kez.
+//
+// .kez/artifacts holds captured screenshots and their .meta/ JSON sidecars —
+// pure data that users commonly track in git. With the whole .kez subtree
+// write-denied, routine git subprocesses (checkout, pull, merge, stash) that
+// materialize those tracked files are blocked, forcing the agent to escape the
+// sandbox to finish an ordinary git operation. Re-allowing only the artifacts
+// subtree keeps the control plane (config.json, require-branch, runtime state)
+// protected while letting git — and any shell command — write artifact data,
+// which is no more privileged than writing elsewhere in the workspace.
+//
+// The default artifacts dir is <root>/.kez/artifacts (see
+// localArtifactsDirFromConfig). A custom artifactsDir pointed elsewhere inside
+// .kez is not covered here; users who relocate it inside .kez can add an
+// allowWrite entry. Nonexistent paths are harmless no-ops in every backend.
+func protectedMetadataWriteCarveouts(root string) []string {
+	return []string{
+		filepath.Join(root, ".kez", "artifacts"),
+	}
+}
+
 func PermissionProfileFromPolicy(workspaceRoot string, policy Policy, scope *Scope) PermissionProfile {
 	if policy.Mode == "" {
 		policy = DefaultPolicy()
@@ -90,6 +116,7 @@ func PermissionProfileFromPolicy(workspaceRoot string, policy Policy, scope *Sco
 		writeRoots = append(writeRoots, WritableRoot{
 			Root:                   root,
 			ReadOnlySubpaths:       gitMetadataWriteCarveouts(root),
+			WritableSubpaths:       protectedMetadataWriteCarveouts(root),
 			ProtectedMetadataNames: append([]string{}, sandboxFullyProtectedMetadataNames...),
 		})
 	}

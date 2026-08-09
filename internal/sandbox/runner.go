@@ -663,6 +663,7 @@ func seatbeltProfileFromPermissionProfile(profile PermissionProfile, policy Poli
 	}
 	rules = append(rules, denyReadRules(profile.FileSystem)...)
 	rules = append(rules, writeRootCarveoutDenyRules(profile.FileSystem)...)
+	rules = append(rules, writeRootProtectedSubpathAllowRules(profile.FileSystem)...)
 	rules = append(rules, denyWriteRulesFromPaths(profile.FileSystem.DenyWrite)...)
 	rules = append(rules, networkRule)
 	return strings.Join(nonEmptyStrings(rules), "\n")
@@ -815,6 +816,32 @@ func writeRootCarveoutDenyRules(fs FileSystemPolicy) []string {
 				continue
 			}
 			out = append(out, `(deny file-write* (regex #"`+sandboxProfileRegex(regex)+`"))`)
+		}
+	}
+	return out
+}
+
+// writeRootProtectedSubpathAllowRules re-allows writes to specific subpaths
+// nested inside a write-denied protected metadata directory (see
+// protectedMetadataWriteCarveouts). It is appended AFTER
+// writeRootCarveoutDenyRules so seatbelt's last-match-wins evaluation lets the
+// narrower carve-out override the broader protected-metadata deny.
+func writeRootProtectedSubpathAllowRules(fs FileSystemPolicy) []string {
+	if fs.Kind != FileSystemRestricted {
+		return nil
+	}
+	var out []string
+	for _, root := range fs.WriteRoots {
+		for _, subpath := range root.WritableSubpaths {
+			subpath = strings.TrimSpace(subpath)
+			if subpath == "" {
+				continue
+			}
+			escaped := sandboxProfileString(subpath)
+			out = append(out,
+				`(allow file-write* (literal "`+escaped+`"))`,
+				`(allow file-write* (subpath "`+escaped+`"))`,
+			)
 		}
 	}
 	return out

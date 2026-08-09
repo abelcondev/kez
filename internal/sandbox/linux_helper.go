@@ -272,6 +272,13 @@ func buildLinuxBwrapFilesystemPlan(profile PermissionProfile) linuxBwrapFilesyst
 				protectedCreateTargets = append(protectedCreateTargets, path)
 			}
 		}
+		// Re-bind writable carve-outs read-write AFTER the protected-metadata
+		// ro-binds above; bubblewrap lets a later bind on a nested path override
+		// the enclosing ro-bind, so .kez/artifacts stays writable inside an
+		// otherwise read-only .kez.
+		for _, subpath := range root.WritableSubpaths {
+			args = appendWritableLinuxPathArgs(args, subpath)
+		}
 	}
 	for _, path := range fs.DenyWrite {
 		args = appendReadOnlyLinuxPathArgs(args, path)
@@ -351,6 +358,22 @@ func appendReadOnlyLinuxPathArgs(args []string, path string) []string {
 		return append(args, "--ro-bind", path, path)
 	}
 	return append(args, "--perms", "555", "--tmpfs", path, "--remount-ro", path)
+}
+
+// appendWritableLinuxPathArgs re-binds an existing path read-write, used to
+// carve a writable subpath out of an enclosing read-only bind. A nonexistent
+// path is skipped: bwrap cannot bind a missing source, and the enclosing
+// ro-bind would block creating it anyway — the common case is the artifacts
+// dir already existing because kez created it.
+func appendWritableLinuxPathArgs(args []string, path string) []string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return args
+	}
+	if pathExists(path) {
+		return append(args, "--bind", path, path)
+	}
+	return args
 }
 
 func appendUnreadableLinuxPathArgs(args []string, path string) []string {
