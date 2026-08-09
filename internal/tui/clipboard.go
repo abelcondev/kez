@@ -49,6 +49,27 @@ func pasteFromClipboardCmd() tea.Cmd {
 	}
 }
 
+// pasteImageOrTextCmd backs Ctrl+V: it probes the OS clipboard for an image
+// (a pasted screenshot) FIRST and attaches it when present, otherwise falls
+// back to pasting text. Image bytes never arrive through the terminal's
+// bracketed paste (tea.PasteMsg is text-only), so Ctrl+V is the explicit
+// image-paste path — matching Claude Code — while cmd/ctrl paste in the
+// terminal still delivers text via tea.PasteMsg.
+func pasteImageOrTextCmd() tea.Cmd {
+	return func() tea.Msg {
+		data, mediaType, err := imageinput.ReadClipboardImage()
+		if err != nil {
+			return clipboardImageMsg{err: err}
+		}
+		if data != nil {
+			return clipboardImageMsg{data: data, mediaType: mediaType}
+		}
+		// No image on the clipboard — paste text instead.
+		content, terr := clipboard.ReadAll()
+		return clipboardReadMsg{content: content, err: terr}
+	}
+}
+
 // routePaste inserts pasted text into whichever input surface is focused. It is
 // shared by the terminal bracketed-paste handler (tea.PasteMsg) and the
 // right-click paste (clipboardReadMsg) so a bracketed paste and a right-click

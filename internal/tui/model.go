@@ -1488,6 +1488,15 @@ func (m model) updateModel(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		switch {
+		case keyCtrl(msg, 'v'):
+			// Ctrl+V pastes from the OS clipboard: an image if one is present (a
+			// pasted screenshot), otherwise text. Terminals never deliver image
+			// bytes through bracketed paste (that arrives as tea.PasteMsg, text
+			// only), so this explicit binding — mirroring Claude Code — is the
+			// only way a clipboard screenshot reaches the composer. The resulting
+			// clipboardImageMsg / clipboardReadMsg is routed to the focused
+			// surface just like a right-click paste.
+			return m, pasteImageOrTextCmd()
 		case m.keyMatch(m.keyBindings.toggleDetailed, msg, func(tea.KeyMsg) bool { return keyCtrl(msg, 'o') }):
 			return m.toggleDetailedTranscript(), nil
 		case m.fileView.active && m.noBlockingModal() && m.composerValue() == "" && (keyText(msg) == "d" || keyText(msg) == "f"):
