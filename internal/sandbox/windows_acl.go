@@ -47,6 +47,19 @@ func BuildWindowsACLPlan(config WindowsSandboxCommandConfig) (WindowsACLPlan, er
 				Capability: capability.SID,
 			})
 		}
+		// Explicit allow-write ACEs on carve-out subpaths (e.g. .kez/artifacts)
+		// nested under a denied protected dir (.kez). Windows evaluates an
+		// explicit ACE on the child object ahead of the deny inherited from the
+		// parent, so the carve-out stays writable while the rest of .kez does
+		// not. windowsACLGroupRequiresExistingTarget makes an allow group a
+		// no-op when its target does not exist yet.
+		for _, path := range capability.WritableCarveoutPaths {
+			entries = append(entries, WindowsACLEntry{
+				Action:     WindowsACLAllowWrite,
+				Path:       path,
+				Capability: capability.SID,
+			})
+		}
 	}
 	writeSIDs := windowsWriteCapabilitySIDs(writeCapabilities)
 	for _, path := range config.PermissionProfile.FileSystem.DenyWrite {
@@ -83,6 +96,7 @@ type windowsWriteRootCapability struct {
 	Root                    string
 	SID                     string
 	ProtectedWriteDenyPaths []string
+	WritableCarveoutPaths   []string
 }
 
 func windowsWriteRootCapabilities(config WindowsSandboxCommandConfig) ([]windowsWriteRootCapability, error) {
@@ -107,10 +121,17 @@ func windowsWriteRootCapabilities(config WindowsSandboxCommandConfig) ([]windows
 				protected = append(protected, filepath.Join(rootPath, trimmed))
 			}
 		}
+		carveouts := make([]string, 0, len(root.WritableSubpaths))
+		for _, subpath := range root.WritableSubpaths {
+			if trimmed := strings.TrimSpace(subpath); trimmed != "" {
+				carveouts = append(carveouts, trimmed)
+			}
+		}
 		out = append(out, windowsWriteRootCapability{
 			Root:                    rootPath,
 			SID:                     sid,
 			ProtectedWriteDenyPaths: protected,
+			WritableCarveoutPaths:   carveouts,
 		})
 	}
 	return out, nil

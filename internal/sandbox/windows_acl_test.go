@@ -19,6 +19,7 @@ func TestBuildWindowsACLPlanForWorkspaceWriteProfile(t *testing.T) {
 					{
 						Root:                   `C:\workspace`,
 						ReadOnlySubpaths:       []string{`C:\workspace\vendor`},
+						WritableSubpaths:       []string{`C:\workspace\.kez\artifacts`},
 						ProtectedMetadataNames: []string{".git", ".kez"},
 					},
 					{Root: `D:\cache`},
@@ -48,6 +49,9 @@ func TestBuildWindowsACLPlanForWorkspaceWriteProfile(t *testing.T) {
 	assertWindowsACLEntry(t, plan, WindowsACLDenyWrite, `C:\workspace\vendor`, workspaceSID, false)
 	assertWindowsACLEntry(t, plan, WindowsACLDenyWrite, `C:\workspace\.git`, workspaceSID, false)
 	assertWindowsACLEntry(t, plan, WindowsACLDenyWrite, `C:\workspace\.kez`, workspaceSID, false)
+	// Explicit allow on the carve-out inside the denied .kez tree: an explicit
+	// child ACE overrides the deny inherited from the .kez parent.
+	assertWindowsACLEntry(t, plan, WindowsACLAllowWrite, `C:\workspace\.kez\artifacts`, workspaceSID, false)
 	assertWindowsACLEntry(t, plan, WindowsACLDenyWrite, `C:\workspace\secret-write`, workspaceSID, false)
 	assertWindowsACLEntry(t, plan, WindowsACLDenyWrite, `C:\workspace\secret-write`, cacheSID, false)
 	assertWindowsACLEntry(t, plan, WindowsACLDenyRead, `C:\workspace\secret-read`, workspaceSID, true)

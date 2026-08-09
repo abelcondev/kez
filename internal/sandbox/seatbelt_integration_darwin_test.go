@@ -165,6 +165,68 @@ func TestSeatbeltAllowsGitMetadataWritesExceptHooksAndConfig(t *testing.T) {
 	})
 }
 
+// TestSeatbeltAllowsKezArtifactsWritesButProtectsControlPlane proves under a
+// real sandbox-exec run that a shell command (e.g. a git checkout/pull
+// materializing tracked files) can write inside .kez/artifacts, while the .kez
+// control plane (config.json, which carries the sandbox policy and MCP server
+// registrations) stays kernel-denied.
+func TestSeatbeltAllowsKezArtifactsWritesButProtectsControlPlane(t *testing.T) {
+	if _, err := exec.LookPath("sandbox-exec"); err != nil {
+		t.Skipf("sandbox-exec unavailable: %v", err)
+	}
+	backend := SelectBackend(BackendOptions{})
+	if !backend.Available || backend.Name != BackendMacOSSeatbelt {
+		t.Skipf("host sandbox backend is not sandbox-exec: %s", backend.Message)
+	}
+
+	workspace := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(workspace, ".kez", "artifacts", ".meta"), 0o755); err != nil {
+		t.Fatalf("MkdirAll .kez/artifacts/.meta: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workspace, ".kez", "config.json"), []byte("{}\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile .kez/config.json: %v", err)
+	}
+	engine := NewEngine(EngineOptions{
+		WorkspaceRoot: workspace,
+		Policy:        DefaultPolicy(),
+		Backend:       backend,
+	})
+	resolvedWorkspace := resolvedTestPath(t, workspace)
+
+	t.Run("WriteToArtifactSucceeds", func(t *testing.T) {
+		target := filepath.Join(resolvedWorkspace, ".kez", "artifacts", "shot.png")
+		output, runErr := runSeatbeltShellWrite(t, engine, target, "artifact-ok")
+		if runErr != nil {
+			t.Fatalf("write under .kez/artifacts failed: %v\noutput: %s", runErr, output)
+		}
+		assertSeatbeltFileContent(t, target, "artifact-ok")
+	})
+
+	t.Run("WriteToArtifactSidecarSucceeds", func(t *testing.T) {
+		target := filepath.Join(resolvedWorkspace, ".kez", "artifacts", ".meta", "shot.png.json")
+		output, runErr := runSeatbeltShellWrite(t, engine, target, "sidecar-ok")
+		if runErr != nil {
+			t.Fatalf("write under .kez/artifacts/.meta failed: %v\noutput: %s", runErr, output)
+		}
+		assertSeatbeltFileContent(t, target, "sidecar-ok")
+	})
+
+	t.Run("WriteToConfigIsDenied", func(t *testing.T) {
+		target := filepath.Join(resolvedWorkspace, ".kez", "config.json")
+		output, runErr := runSeatbeltShellWrite(t, engine, target, `{"sandbox":{"mode":"disabled"}}`)
+		if runErr == nil {
+			t.Fatalf("write to .kez/config.json succeeded, want seatbelt denial\noutput: %s", output)
+		}
+		content, err := os.ReadFile(target)
+		if err != nil {
+			t.Fatalf("read back .kez/config.json: %v", err)
+		}
+		if string(content) != "{}\n" {
+			t.Fatalf(".kez/config.json content = %q, want unchanged", content)
+		}
+	})
+}
+
 // runSeatbeltShellWrite launches /bin/sh through the engine's sandbox-exec
 // wrapping and asks it to write content to target. It returns the combined
 // output and the run error so callers can assert success or kernel denial.

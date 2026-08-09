@@ -537,6 +537,34 @@ func TestSeatbeltProfileAllowsGitWritesExceptHooksAndConfig(t *testing.T) {
 	}
 }
 
+// TestSeatbeltProfileAllowsKezArtifactsWritesInsideProtectedKez locks in the
+// carve-out that keeps .kez blanket write-denied (control plane: config.json,
+// require-branch, runtime state) while re-allowing .kez/artifacts so git
+// subprocesses (checkout, pull, merge) can materialize tracked artifact files
+// without the agent having to escape the sandbox. The allow must follow the
+// broad .kez deny so seatbelt's last-match-wins evaluation picks the carve-out.
+func TestSeatbeltProfileAllowsKezArtifactsWritesInsideProtectedKez(t *testing.T) {
+	workspace := t.TempDir()
+	profile := DefaultPermissionProfile(workspace)
+	sbpl := seatbeltProfileFromPermissionProfile(profile, Policy{Mode: ModeEnforce}, "")
+
+	resolvedWorkspace := normalizeProfilePath(workspace)
+	kezRegex := `(deny file-write* (regex #"^` + regexpQuoteMeta(resolvedWorkspace) + `/\.kez(/.*)?$"))`
+	if !strings.Contains(sbpl, kezRegex) {
+		t.Fatalf("seatbelt profile must still blanket-deny the .kez tree:\n%s", sbpl)
+	}
+	artifactsPath := sandboxProfileString(filepath.Join(resolvedWorkspace, ".kez", "artifacts"))
+	allowSubpath := `(allow file-write* (subpath "` + artifactsPath + `"))`
+	if !strings.Contains(sbpl, allowSubpath) {
+		t.Fatalf("seatbelt profile missing .kez/artifacts write carve-out %q:\n%s", allowSubpath, sbpl)
+	}
+	denyIdx := strings.Index(sbpl, kezRegex)
+	allowIdx := strings.Index(sbpl, allowSubpath)
+	if allowIdx < denyIdx {
+		t.Fatalf("the .kez/artifacts allow (%d) must follow the .kez deny (%d) for last-match-wins:\n%s", allowIdx, denyIdx, sbpl)
+	}
+}
+
 func TestSandboxExecProfileTagsDenialsWhenMonitoring(t *testing.T) {
 	off := sandboxExecProfile([]string{"/ws"}, Policy{Mode: ModeEnforce, EnforceWorkspace: true}, "")
 	if strings.Contains(off, "with message") {

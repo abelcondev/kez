@@ -265,6 +265,41 @@ func TestLinuxBwrapFilesystemPlanPreservesMissingProtectedMetadata(t *testing.T)
 	}
 }
 
+// TestLinuxBwrapFilesystemPlanRebindsKezArtifactsWritable locks in the
+// carve-out: .kez is ro-bound (control plane protected) but .kez/artifacts is
+// re-bound read-write AFTER it, so git subprocesses can materialize tracked
+// artifact files inside the sandbox. bwrap lets the later nested bind override
+// the enclosing ro-bind.
+func TestLinuxBwrapFilesystemPlanRebindsKezArtifactsWritable(t *testing.T) {
+	workspace := t.TempDir()
+	kezDir := filepath.Join(workspace, ".kez")
+	artifactsDir := filepath.Join(kezDir, "artifacts")
+	if err := os.MkdirAll(artifactsDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll artifacts: %v", err)
+	}
+	profile := PermissionProfile{
+		FileSystem: FileSystemPolicy{
+			Kind:      FileSystemRestricted,
+			ReadRoots: []string{string(filepath.Separator)},
+			WriteRoots: []WritableRoot{{
+				Root:                   workspace,
+				WritableSubpaths:       []string{artifactsDir},
+				ProtectedMetadataNames: []string{".git", ".kez"},
+			}},
+		},
+		Network: NetworkPolicy{Mode: NetworkDeny},
+	}
+
+	plan := buildLinuxBwrapFilesystemPlan(profile)
+	assertArgsContainSequence(t, plan.Args, "--ro-bind", kezDir, kezDir)
+	assertArgsContainSequence(t, plan.Args, "--bind", artifactsDir, artifactsDir)
+	kezIdx := argsSequenceIndex(plan.Args, "--ro-bind", kezDir, kezDir)
+	artifactsIdx := argsSequenceIndex(plan.Args, "--bind", artifactsDir, artifactsDir)
+	if artifactsIdx < kezIdx {
+		t.Fatalf("artifacts rw-bind (%d) must follow the .kez ro-bind (%d) so it wins:\n%#v", artifactsIdx, kezIdx, plan.Args)
+	}
+}
+
 func TestLinuxBwrapUnrestrictedFilesystemUsesWritableHostRoot(t *testing.T) {
 	profile := PermissionProfile{
 		FileSystem: FileSystemPolicy{
