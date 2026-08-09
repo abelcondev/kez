@@ -129,7 +129,7 @@ func TestSanitizeComposerPastePreservesNewlines(t *testing.T) {
 	}
 }
 
-func TestCtrlVDoesNotPasteIntoComposer(t *testing.T) {
+func TestCtrlVProbesClipboardWithoutMutatingComposer(t *testing.T) {
 	m := newModel(context.Background(), Options{})
 	m.input.SetValue("hello")
 	m.input.CursorEnd()
@@ -137,9 +137,13 @@ func TestCtrlVDoesNotPasteIntoComposer(t *testing.T) {
 	updated, cmd := m.Update(testKeyCtrl('v'))
 	next := updated.(model)
 
-	if cmd != nil {
-		t.Fatal("ctrl+v should not run the textinput clipboard paste command")
+	// Ctrl+V kicks off the async OS-clipboard probe (image first, then text).
+	if cmd == nil {
+		t.Fatal("ctrl+v should run the clipboard image-or-text paste command")
 	}
+	// It must NOT synchronously insert raw text into the composer via the
+	// textinput's built-in paste — the composer stays untouched until the
+	// async result routes back through routePaste / attachClipboardImage.
 	if got := next.composerValue(); got != "hello" {
 		t.Fatalf("composer value after ctrl+v = %q, want unchanged", got)
 	}
