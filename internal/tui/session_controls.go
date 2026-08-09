@@ -387,6 +387,9 @@ func (m model) handleTurnsCommand(args string) (model, string) {
 		n = maxTurnsCeiling
 	}
 	m.agentOptions.MaxTurns = n
+	// An explicit /turns pins the budget: suppress the SDD-implement auto-widen so
+	// the user's number is honored for every phase, implement included.
+	m.turnsPinned = true
 	// Propagate the budget to spawned sub-agents / swarm members (which inherit the
 	// environment) so a delegated task gets the same budget, not config.json's default.
 	config.SetMaxTurnsEnv(n)

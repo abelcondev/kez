@@ -168,6 +168,14 @@ func Run(ctx context.Context, prompt string, provider Provider, options Options)
 	if maxTurns <= 0 {
 		maxTurns = 12
 	}
+	// The SDD implement phase (TDD + review) is predictably long and overran the
+	// default budget, getting cut off at the final step. When the caller offers a
+	// wider budget for that phase (only when the user hasn't pinned one), raise
+	// the ceiling to it. Detected from the same on-disk loop state the system
+	// prompt renders, so the budget and the on-screen "Next step" always agree.
+	if options.SDDImplementTurnBudget > maxTurns && sddImplementPhase(options.Cwd) {
+		maxTurns = options.SDDImplementTurnBudget
+	}
 
 	registry := options.Registry
 	if registry == nil {

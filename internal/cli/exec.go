@@ -626,33 +626,42 @@ func runExec(args []string, stdout io.Writer, stderr io.Writer, deps appDeps) in
 	// project hooks/plugins were dropped for an untrusted workspace.
 	hookDispatcher, hookSkip := newHookDispatcherWithExtra(workspaceRoot, pluginActivation.hooks, trustRoot, executionRunner)
 	emitTrustNotice(stderr, hookSkip, pluginActivation.trustSkip, mcpSkip)
+	// Widen the budget for the SDD implement phase unless the user pinned one
+	// (--max-turns) or chose a profile; the agent loop applies it only when this
+	// run is actually positioned at that phase. Kept out of the pinned/profiled
+	// paths so an explicit choice is never overridden.
+	sddImplementTurnBudget := 0
+	if options.maxTurns == 0 && execProfile.Name == "" {
+		sddImplementTurnBudget = execprofile.Thorough.MaxTurns
+	}
 	result, err := agent.Run(runCtx, agentPrompt, provider, agent.Options{
-		MaxTurns:             resolved.MaxTurns,
-		ContextWindow:        resolveAgentContextWindow(runCtx, modelRegistry, resolved.Provider),
-		DeferThreshold:       effectiveDeferThreshold,
-		Specialists:          specialistRuntime.specialistInfos(),
-		Skills:               pluginActivation.skillInfos(deps.skillsDir()),
-		SessionID:            preparedSession.Session.SessionID,
-		CallingSessionID:     options.callingSessionID,
-		CallingToolUseID:     options.callingToolUseID,
-		Tag:                  options.tag,
-		Depth:                options.depth,
-		SessionTitle:         sessionTitle,
-		ProviderName:         resolved.Provider.Name,
-		Model:                resolved.Provider.Model,
-		ModelSwitcher:        modelSwitcher,
-		TurnSessionProvider:  turnSessions,
-		ModelSessionSwitcher: modelSessionSwitcher,
-		ReasoningEffort:      forwardEffort,
-		Trace:                traceRecorder,
-		Cwd:                  workspaceRoot,
-		Images:               images,
-		Registry:             registry,
-		PermissionMode:       permissionMode,
-		Autonomy:             options.autonomy,
-		SelfCorrect:          selfCorrector,
-		FileDiagnostics:      fileDiagnostics,
-		Profile:              execProfile.Policy(displacedMaxTurns, execProfileFilledEffort),
+		MaxTurns:               resolved.MaxTurns,
+		SDDImplementTurnBudget: sddImplementTurnBudget,
+		ContextWindow:          resolveAgentContextWindow(runCtx, modelRegistry, resolved.Provider),
+		DeferThreshold:         effectiveDeferThreshold,
+		Specialists:            specialistRuntime.specialistInfos(),
+		Skills:                 pluginActivation.skillInfos(deps.skillsDir()),
+		SessionID:              preparedSession.Session.SessionID,
+		CallingSessionID:       options.callingSessionID,
+		CallingToolUseID:       options.callingToolUseID,
+		Tag:                    options.tag,
+		Depth:                  options.depth,
+		SessionTitle:           sessionTitle,
+		ProviderName:           resolved.Provider.Name,
+		Model:                  resolved.Provider.Model,
+		ModelSwitcher:          modelSwitcher,
+		TurnSessionProvider:    turnSessions,
+		ModelSessionSwitcher:   modelSessionSwitcher,
+		ReasoningEffort:        forwardEffort,
+		Trace:                  traceRecorder,
+		Cwd:                    workspaceRoot,
+		Images:                 images,
+		Registry:               registry,
+		PermissionMode:         permissionMode,
+		Autonomy:               options.autonomy,
+		SelfCorrect:            selfCorrector,
+		FileDiagnostics:        fileDiagnostics,
+		Profile:                execProfile.Policy(displacedMaxTurns, execProfileFilledEffort),
 		// Headless exec: don't accept a no-tool-call turn as "done" while work
 		// clearly remains (pending plan items / a mid-step continuation cue) —
 		// nudge to continue, and finalize as INCOMPLETE rather than false success
