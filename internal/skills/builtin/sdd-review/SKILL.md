@@ -7,7 +7,11 @@ description: Use after a task is green and before opening its PR — run a fresh
 
 A second pass with clean context catches blind spots the implementing context misses. This gate runs **before the PR** and does not replace the human review at merge — it precedes it, so the human sees already-audited code.
 
-Review has **two lenses** and a **remediation loop**: find issues with fresh eyes, fix them, then re-check that the fixes hold.
+Review has a **cheap static pre-pass**, **two model-driven lenses**, and a **remediation loop**: knock out the deterministic smells for free, find the rest with fresh eyes, fix them, then re-check that the fixes hold.
+
+## Lens 0 — cheap static pre-pass (run first)
+
+Before spending a single model-driven review round, run the deterministic checks recorded under `## Cheap review checks` in `sdd/index.md` against the diff (they are plain greps — literal glyphs in UI templates, a domain type redefined outside its home module, `TODO`/`FIXME` introduced, etc.). Fix every hit now. These are cheap and repeatable, so catching them here keeps Lens A/B focused on real correctness and design judgment instead of burning a 3–4 minute round on a duplicated label or an emoji that should be an icon. If `sdd/index.md` records no checks yet, skip this pass (and consider adding the obvious ones for the stack).
 
 ## Lens A — correctness & security
 
@@ -34,7 +38,7 @@ Have it return findings as a list of `{ file, lines, category, severity (high|me
 
 ## The remediation loop
 
-1. **Round 1** — run Lens A and Lens B; collect all findings.
+1. **Round 1** — run Lens 0 (cheap greps) first and fix its hits, then run Lens A and Lens B; collect all findings.
 2. **Fix** — address every **high** and **medium** finding: split the file, extract the helper, rewire, dedupe, delete the dead code. Fix the cause, not the symptom. Keep the diff scoped to the task — this is remediation, not gold-plating.
 3. **Re-run validators** (tests, typecheck, lint, build) after the fixes.
 4. **Round 2** — re-run the craft subagent on the new diff to confirm the fixes hold and introduced no new smells.

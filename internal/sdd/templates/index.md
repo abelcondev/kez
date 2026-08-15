@@ -44,6 +44,28 @@ isolated route, and reviewed live — not mocked up in an external tool. Example
   CSS/utility classes when a component exists. If a primitive is missing, add it to
   the workbench first (a small design-system pass), then compose from it. -->
 
+## Test conventions
+
+<!-- Recorded by sdd-stack; honored by sdd-test. Example:
+- Runner & file pattern: <e.g. Vitest, *.test.ts> / <go test, *_test.go>.
+- Location: <dedicated tests/ mirroring src/, or colocated>.
+- Import path: <the alias tests use, e.g. $lib / ~/ — NOT deep relative ../../..>.
+- Validators (the loop runs these before review): <test / typecheck / lint / build commands>. -->
+
+## Cheap review checks
+
+<!-- Deterministic, project-specific greps the review runs FIRST, before the
+expensive model-driven lenses — so cheap, repeatable smells never cost a review
+round. Recorded by sdd-stack, run by sdd-review. Each is a one-line rule + the
+command that detects a violation. Examples:
+- No literal glyph/emoji chars in UI templates — use the icon library:
+  `rg -n "[✓⌫←→✕]" src --glob "*.svelte"`
+- Domain types live in one module, never redefined:
+  `rg -n "type StaffRole" src | rg -v "lib/staff-role"`
+- No TODO/FIXME introduced in the diff:
+  `git diff --cached | rg -n "^\+.*(TODO|FIXME)"`
+Keep these few and fast; they prompt a look, they do not replace review. -->
+
 ## Decisions
 
 <!-- Newest last. One line per approved decision, linking its file:

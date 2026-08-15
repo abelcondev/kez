@@ -27,6 +27,7 @@ Choosing the stack is the **user's decision**, informed by your research — nev
    - **Test import convention** — how tests import the code under test: the configured path alias (e.g. `$lib`, `~/`, a `tsconfig`/`vitest` alias) rather than deep relative paths. Record the exact alias so `sdd-test` never has to guess `../../..` depth (a repeated source of red-then-fix churn). If the project has no alias, say so and set up one during the first task if the runner supports it.
    - **UI component library / design system** — so UI work builds from it instead of hand-rolled CSS.
    - **Lint / typecheck / build commands** — the validators the loop runs.
+   - **Cheap review checks** — a few deterministic greps (under `## Cheap review checks` in `sdd/index.md`) that `sdd-review` runs *before* the expensive model lenses, so repeatable smells never cost a review round. Seed the ones that fit the stack: no literal glyph/emoji chars in UI templates (use the icon library), domain types defined in one module only, no `TODO`/`FIXME` introduced in the diff. Keep them few and fast.
 
 5. **Persist it — only after the user has okayed the choices:**
 
