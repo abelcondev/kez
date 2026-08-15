@@ -517,6 +517,108 @@ func TestSubmitPrependsDocumentTextThenClears(t *testing.T) {
 	}
 }
 
+func TestAttachmentChipList(t *testing.T) {
+	if got := attachmentChipList(nil, nil); got != nil {
+		t.Fatalf("no attachments => nil, got %v", got)
+	}
+	got := attachmentChipList([]string{"a.png", "b.png"}, []pendingDocument{{label: "spec.pdf"}})
+	want := []string{"Image #1", "Image #2", "Doc #1"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("chip[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestImageOrderManifest(t *testing.T) {
+	if got := imageOrderManifest(0); got != "" {
+		t.Fatalf("zero images => empty manifest, got %q", got)
+	}
+	if got := imageOrderManifest(1); !strings.Contains(got, "image #1") || strings.Contains(got, "image #2") {
+		t.Fatalf("one-image manifest = %q, want only image #1", got)
+	}
+	got := imageOrderManifest(3)
+	for _, ref := range []string{"image #1", "image #2", "image #3"} {
+		if !strings.Contains(got, ref) {
+			t.Fatalf("manifest %q missing %q", got, ref)
+		}
+	}
+}
+
+// TestMultiImagePromptRecordsChipsAndOrderManifest guards both shipped image
+// improvements at once: (A) the submitted user row keeps persistent attachment
+// chips after the composer clears, and (B) the model-facing prompt carries an
+// explicit order manifest anchoring "image #N" to the Nth attachment. The visible
+// user row must stay clean (no manifest text).
+func TestMultiImagePromptRecordsChipsAndOrderManifest(t *testing.T) {
+	root := t.TempDir()
+	provider := &fakeProvider{events: []zeroruntime.StreamEvent{
+		{Type: zeroruntime.StreamEventText, Content: "ok"},
+		{Type: zeroruntime.StreamEventDone},
+	}}
+	m := newModel(context.Background(), Options{
+		Cwd:          root,
+		ProviderName: "openai",
+		ModelName:    "gpt-4.1",
+		Provider:     provider,
+		Registry:     tools.NewRegistry(),
+		SessionStore: testSessionStore(t),
+	})
+	m.agentOptions.OnText = func(string) {}
+
+	png := []byte{0x89, 'P', 'N', 'G'}
+	m = m.attachClipboardImage(png, "image/png")
+	m = m.attachClipboardImage(png, "image/png")
+	if len(m.pendingImages) != 2 {
+		t.Fatalf("setup: want 2 staged images, got %d (vision gate?)", len(m.pendingImages))
+	}
+
+	m.input.SetValue("set border on image #1 and color on image #2")
+	updated, cmd := m.handleSubmit()
+	next := updated.(model)
+	if cmd == nil {
+		t.Fatal("expected a prompt submit to start a run")
+	}
+
+	// (A) The submitted user row carries the numbered chips…
+	var userRow transcriptRow
+	found := false
+	for _, r := range next.transcript {
+		if r.kind == rowUser {
+			userRow, found = r, true
+		}
+	}
+	if !found {
+		t.Fatal("no user row recorded in transcript")
+	}
+	if len(userRow.attachments) != 2 || userRow.attachments[0] != "Image #1" || userRow.attachments[1] != "Image #2" {
+		t.Fatalf("user row attachments = %v, want [Image #1 Image #2]", userRow.attachments)
+	}
+	// …but its visible text stays clean (the manifest is model-facing only).
+	if strings.Contains(userRow.text, "Attached images") {
+		t.Fatalf("visible user row must stay clean, got %q", userRow.text)
+	}
+
+	updated, _ = next.Update(execCmd(cmd))
+	_ = updated.(model)
+
+	if len(provider.requests) != 1 {
+		t.Fatalf("expected one provider request, got %d", len(provider.requests))
+	}
+	msgs := provider.requests[0].Messages
+	last := msgs[len(msgs)-1]
+	// (B) The model receives both images in order plus the anchoring manifest.
+	if len(last.Images) != 2 {
+		t.Fatalf("model must receive 2 images in attach order, got %d", len(last.Images))
+	}
+	if !strings.Contains(last.Content, "[Attached images, in order: image #1, image #2]") {
+		t.Fatalf("model prompt must carry the order manifest, got:\n%s", last.Content)
+	}
+}
+
 func TestRenderAttachmentChips(t *testing.T) {
 	if got := renderAttachmentChips(nil, nil); got != "" {
 		t.Fatalf("empty attachments should render no chips, got %q", got)

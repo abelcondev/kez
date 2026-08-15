@@ -4825,7 +4825,30 @@ func (m model) launchPrompt(prompt string) (model, tea.Cmd) {
 	m.lastImages = m.pendingImages
 	m.lastImageLabels = m.pendingImageLabels
 	m.lastDocuments = m.pendingDocuments
-	m.transcript = reduceTranscript(m.transcript, transcriptAction{kind: actionAppendUser, text: prompt})
+	// Re-check vision support against the CURRENT effective model BEFORE recording
+	// the turn, not just at /image attach time: the user may have attached on a
+	// vision model and then /model-switched to a non-vision one. Images the active
+	// model can't accept are dropped here (a notice follows the user row) so the
+	// recorded chips + order manifest describe exactly what was sent.
+	turnImages := m.pendingImages
+	imageLabels := m.pendingImageLabels
+	dropNotice := ""
+	if len(turnImages) > 0 && !m.modelSupportsVisionTUI() {
+		name := m.modelName
+		if name == "" {
+			name = "the active model"
+		}
+		dropNotice = fmt.Sprintf("Model %s does not support image input; ignoring %d image(s).", name, len(turnImages))
+		turnImages = nil
+		imageLabels = nil
+	}
+	// Record the surviving attachments on the user row so their chips persist under
+	// the message after the composer clears (they used to vanish on send).
+	attachmentChips := attachmentChipList(imageLabels, m.pendingDocuments)
+	m.transcript = reduceTranscript(m.transcript, transcriptAction{kind: actionAppendUser, text: prompt, attachments: attachmentChips})
+	if dropNotice != "" {
+		m.transcript = reduceTranscript(m.transcript, transcriptAction{kind: actionAppendSystem, text: dropNotice})
+	}
 	if m.provider == nil {
 		m.transcript = reduceTranscript(m.transcript, transcriptAction{
 			kind: actionAppendAssistant,
@@ -4845,6 +4868,11 @@ func (m model) launchPrompt(prompt string) (model, tea.Cmd) {
 	if preamble := m.consumePendingDocuments(); preamble != "" {
 		prompt = preamble + prompt
 	}
+	// Anchor "image #N" references to the Nth attachment for the model (and the
+	// recorded session, for resume fidelity). Appended after the text so it sits
+	// adjacent to the images that follow it in the request. Never shown in the
+	// visible transcript, which keeps the user's clean prompt above.
+	prompt += imageOrderManifest(len(turnImages))
 	var err error
 	m, err = m.ensureActiveSession(prompt)
 	if err != nil {
@@ -4866,24 +4894,8 @@ func (m model) launchPrompt(prompt string) (model, tea.Cmd) {
 		}
 		prompt = agentPrompt
 	}
-	// Re-check vision support against the CURRENT effective model at submit
-	// time, not just at /image attach time: the user may have attached on a
-	// vision model and then /model-switched to a non-vision one. If the active
-	// model can't accept images, drop them (with an inline notice mirroring
-	// exec's drop+warn wording) rather than sending them to a model that
-	// rejects them. Pending state is cleared either way below.
-	turnImages := m.pendingImages
-	if len(turnImages) > 0 && !m.modelSupportsVisionTUI() {
-		name := m.modelName
-		if name == "" {
-			name = "the active model"
-		}
-		m.transcript = reduceTranscript(m.transcript, transcriptAction{
-			kind: actionAppendSystem,
-			text: fmt.Sprintf("Model %s does not support image input; ignoring %d image(s).", name, len(turnImages)),
-		})
-		turnImages = nil
-	}
+	// turnImages (and the vision-drop notice) were resolved up front, before the
+	// turn was recorded; just clear the staged queues now.
 	m.pendingImages = nil
 	m.pendingImageLabels = nil
 	runCtx, cancel := context.WithCancel(m.ctx)

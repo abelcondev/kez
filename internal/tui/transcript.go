@@ -43,6 +43,12 @@ type transcriptRow struct {
 	askUser    *agent.AskUserRequest
 	expanded   bool // collapsible transcript rows, e.g. provider thoughts
 
+	// attachments lists the chip labels ("Image #1", "Doc #1") for a user row that
+	// was submitted with staged images/PDFs. Rendered as a faint line under the
+	// message so the attachments stay visible after send instead of vanishing with
+	// the composer chips. Nil for a text-only turn.
+	attachments []string
+
 	// changedFiles lists the workspace-relative paths a mutating tool result
 	// wrote (from tools.Result.ChangedFiles; restored from the session payload on
 	// resume). The sidebar FILES section derives its roster from these.
@@ -76,6 +82,9 @@ const (
 type transcriptAction struct {
 	kind transcriptActionKind
 	text string
+	// attachments carries the user row's attachment chip labels (see
+	// transcriptRow.attachments). Only actionAppendUser reads it.
+	attachments []string
 }
 
 func initialTranscript() []transcriptRow {
@@ -90,7 +99,7 @@ func reduceTranscript(rows []transcriptRow, action transcriptAction) []transcrip
 	case actionClear:
 		return initialTranscript()
 	case actionAppendUser:
-		return appendRow(rows, rowUser, action.text)
+		return appendTranscriptRow(rows, transcriptRow{kind: rowUser, text: action.text, attachments: action.attachments})
 	case actionAppendAssistant:
 		return appendRow(rows, rowAssistant, action.text)
 	case actionAppendSystem:

@@ -527,6 +527,15 @@ func renderUserRow(row transcriptRow, width int) string {
 	for _, line := range wrapped {
 		lines = append(lines, renderUserPromptStyledLine(zeroTheme.ink.Bold(true).Render(line), contentWidth))
 	}
+	// Attachment chips persist under the message ("[Image #1] [Image #2]"), so a
+	// turn's images/PDFs stay visible after the composer chips clear on send.
+	if len(row.attachments) > 0 {
+		chips := make([]string, len(row.attachments))
+		for i, label := range row.attachments {
+			chips[i] = "[" + label + "]"
+		}
+		lines = append(lines, renderUserPromptStyledLine(zeroTheme.muted.Render(strings.Join(chips, " ")), contentWidth))
+	}
 	return strings.Join(lines, "\n")
 }
 

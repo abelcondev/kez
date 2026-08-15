@@ -298,6 +298,41 @@ func (m model) visionDropWarning() string {
 		len(m.pendingImages), displayValue(m.modelName, "the active model"))
 }
 
+// attachmentChipList returns the per-attachment chip labels ("Image #1", "Doc #1")
+// in the same order renderAttachmentChips numbers them, for recording on a user's
+// transcript row so the attachments stay visible after the composer clears.
+// Empty when nothing is attached.
+func attachmentChipList(imageLabels []string, docs []pendingDocument) []string {
+	if len(imageLabels)+len(docs) == 0 {
+		return nil
+	}
+	chips := make([]string, 0, len(imageLabels)+len(docs))
+	for i := range imageLabels {
+		chips = append(chips, fmt.Sprintf("Image #%d", i+1))
+	}
+	for i := range docs {
+		chips = append(chips, fmt.Sprintf("Doc #%d", i+1))
+	}
+	return chips
+}
+
+// imageOrderManifest returns a one-line, model-facing note numbering the attached
+// images in the order they follow the prompt text. It anchors a prompt that refers
+// to "image #1" / "image #2" to the Nth attachment deterministically, instead of
+// leaving the model to infer the correspondence from image order alone. Appended
+// to the end of the model-facing prompt (adjacent to the images that follow it);
+// never shown in the visible transcript. Empty for zero images.
+func imageOrderManifest(n int) string {
+	if n <= 0 {
+		return ""
+	}
+	refs := make([]string, n)
+	for i := range refs {
+		refs[i] = fmt.Sprintf("image #%d", i+1)
+	}
+	return "\n\n[Attached images, in order: " + strings.Join(refs, ", ") + "]"
+}
+
 func renderAttachmentChips(imageLabels []string, docs []pendingDocument) string {
 	chips := make([]string, 0, len(imageLabels)+len(docs))
 	for i := range imageLabels {

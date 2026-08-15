@@ -137,6 +137,9 @@ func (m model) renderRowCacheKey(row transcriptRow, width int, rc rowContext, op
 	appendRenderCacheField(&b, strconv.Itoa(int(row.kind)))
 	appendRenderCacheField(&b, row.id)
 	appendRenderCacheField(&b, row.text)
+	// User rows carry attachment chips ("[Image #1] …") rendered from this slice;
+	// two same-text turns with different attachments must not share a cache entry.
+	appendRenderCacheField(&b, strings.Join(row.attachments, ","))
 	appendRenderCacheField(&b, row.tool)
 	appendRenderCacheField(&b, fmt.Sprint(row.status))
 	appendRenderCacheField(&b, row.detail)
