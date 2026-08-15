@@ -19,6 +19,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+
+	"github.com/abelcondev/kez/internal/brand"
 )
 
 type WrittenChecksum struct {
@@ -599,7 +601,9 @@ func PackageVersion(rootDir string) (string, error) {
 }
 
 func buildZero(ctx context.Context, rootDir string, output string, version string, goos string, goarch string) error {
-	return buildGoPackage(ctx, rootDir, output, version, goos, goarch, "./cmd/zero")
+	// The main CLI package lives at ./cmd/kez (renamed from ./cmd/zero); the
+	// artifact is still named "zero" (see ZeroArtifactName) for the npm wrapper.
+	return buildGoPackage(ctx, rootDir, output, version, goos, goarch, "./cmd/kez")
 }
 
 func buildLinuxSandboxHelper(ctx context.Context, rootDir string, output string, goos string, goarch string) error {
@@ -675,7 +679,9 @@ func smokeVersion(ctx context.Context, binaryPath string, version string) error 
 		}
 		return fmt.Errorf("smoke release binary: %s", output)
 	}
-	expected := "zero " + version
+	// The CLI prints "<brand.Name> <version>" (see cli.app --version); track the
+	// brand so the rename zero→kez can't silently break the smoke check again.
+	expected := brand.Name + " " + version
 	if output != expected {
 		return fmt.Errorf("expected %s --version to print %s, got %s", filepath.Base(binaryPath), expected, output)
 	}
