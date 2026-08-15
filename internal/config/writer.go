@@ -591,6 +591,30 @@ func SetTheme(path string, theme string) (FileConfig, error) {
 	return cfg, nil
 }
 
+// SetPermissionMode persists the interactive permission mode preference,
+// mirroring SetTheme (read-modify-atomic-write). mode should be one of "auto",
+// "ask", or "unsafe"; a blank mode clears the stored preference so startup falls
+// back to the default ("ask").
+func SetPermissionMode(path string, mode string) (FileConfig, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return FileConfig{}, fmt.Errorf("config path is required")
+	}
+	cfg := FileConfig{}
+	if data, err := os.ReadFile(path); err == nil {
+		if err := json.Unmarshal(data, &cfg); err != nil {
+			return FileConfig{}, fmt.Errorf("invalid config JSON %s: %w", path, err)
+		}
+	} else if !os.IsNotExist(err) {
+		return FileConfig{}, fmt.Errorf("read config %s: %w", path, err)
+	}
+	cfg.Preferences.PermissionMode = strings.TrimSpace(mode)
+	if err := writeConfigFile(path, cfg); err != nil {
+		return FileConfig{}, err
+	}
+	return cfg, nil
+}
+
 // SetSTTModel persists the dictation model and its provider, mirroring
 // SetTheme (read-modify-atomic-write). provider must be one of the known STT
 // provider kinds; a local provider stores the model as stt.localModelPath,

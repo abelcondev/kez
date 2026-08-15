@@ -270,6 +270,9 @@ func mergeConfig(dst *FileConfig, src FileConfig) {
 	if strings.TrimSpace(src.Preferences.Theme) != "" {
 		dst.Preferences.Theme = strings.TrimSpace(src.Preferences.Theme)
 	}
+	if strings.TrimSpace(src.Preferences.PermissionMode) != "" {
+		dst.Preferences.PermissionMode = strings.TrimSpace(src.Preferences.PermissionMode)
+	}
 	mergeLocalControlConfig(&dst.LocalControl, src.LocalControl)
 	mergeKeyBindings(&dst.KeyBindings, src.KeyBindings)
 	mergeSTTConfig(&dst.STT, src.STT)

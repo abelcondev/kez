@@ -271,7 +271,10 @@ func runWithDeps(args []string, stdout io.Writer, stderr io.Writer, deps appDeps
 	addDirs = append(addDirs, moreDirs...)
 
 	if len(args) == 0 {
-		return runInteractiveTUI(stderr, deps, agent.PermissionModeAsk, addDirs, theme)
+		// Empty (not Ask) so runInteractiveTUIWithSetup can layer the persisted
+		// Preferences.PermissionMode over the Ask default; an explicit
+		// --skip-permissions-unsafe launch (below) still forces unsafe.
+		return runInteractiveTUI(stderr, deps, "", addDirs, theme)
 	}
 
 	// --add-dir grants an extra write root, and only the interactive TUI and
@@ -593,6 +596,21 @@ func fillAppDeps(deps appDeps) appDeps {
 	return deps
 }
 
+// savedInteractivePermissionMode maps a persisted Preferences.PermissionMode
+// string to the interactive mode to launch in. Only the three modes shift+tab
+// cycles (auto/ask/unsafe) are honored; anything else — including the empty
+// unset value or a stale non-interactive mode — folds to Ask, the safe default.
+func savedInteractivePermissionMode(saved string) agent.PermissionMode {
+	switch agent.PermissionMode(strings.TrimSpace(saved)) {
+	case agent.PermissionModeAuto:
+		return agent.PermissionModeAuto
+	case agent.PermissionModeUnsafe:
+		return agent.PermissionModeUnsafe
+	default:
+		return agent.PermissionModeAsk
+	}
+}
+
 func runInteractiveTUI(stderr io.Writer, deps appDeps, permissionMode agent.PermissionMode, addDirs []string, theme string) int {
 	return runInteractiveTUIWithSetup(stderr, deps, permissionMode, addDirs, theme, false)
 }
@@ -792,7 +810,7 @@ func runInteractiveTUIWithSetup(stderr io.Writer, deps appDeps, permissionMode a
 	// count uses the SAME permission mode the agent loop's partition will use; an
 	// empty mode here would mis-gate prompt-advertised deferred tools.
 	if permissionMode == "" {
-		permissionMode = agent.PermissionModeAsk
+		permissionMode = savedInteractivePermissionMode(resolved.Preferences.PermissionMode)
 	}
 	// Activate deferred MCP-tool loading for the interactive run only when the
 	// VISIBLE deferred-eligible count meets the resolved threshold, matching exec.

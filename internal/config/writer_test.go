@@ -369,6 +369,39 @@ func TestSetThemePersistsUserPreference(t *testing.T) {
 	}
 }
 
+func TestSetPermissionModePersistsUserPreference(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "zero.json")
+	writeConfigFixture(t, path, FileConfig{
+		ActiveProvider: "openai",
+		Providers: []ProviderProfile{
+			{Name: "openai", ProviderKind: ProviderKindOpenAI, Model: "gpt-4.1"},
+		},
+	}, 0o600)
+
+	cfg, err := SetPermissionMode(path, "  unsafe  ")
+	if err != nil {
+		t.Fatalf("SetPermissionMode() error = %v", err)
+	}
+	if cfg.Preferences.PermissionMode != "unsafe" {
+		t.Fatalf("PermissionMode = %q, want unsafe (trimmed)", cfg.Preferences.PermissionMode)
+	}
+	persisted := readConfigFixture(t, path)
+	if persisted.Preferences.PermissionMode != "unsafe" {
+		t.Fatalf("persisted PermissionMode = %q, want unsafe", persisted.Preferences.PermissionMode)
+	}
+	if persisted.ActiveProvider != "openai" || len(persisted.Providers) != 1 {
+		t.Fatalf("provider config was not preserved by SetPermissionMode: %#v", persisted)
+	}
+
+	// A blank value clears the stored preference so startup falls back to the default.
+	if cfg, err = SetPermissionMode(path, ""); err != nil {
+		t.Fatalf("SetPermissionMode(\"\") error = %v", err)
+	}
+	if cfg.Preferences.PermissionMode != "" {
+		t.Fatalf("SetPermissionMode(\"\") should clear the mode, got %q", cfg.Preferences.PermissionMode)
+	}
+}
+
 func TestRecapsPreferenceRoundTrips(t *testing.T) {
 	// Default (unset) is ON.
 	if !(PreferencesConfig{}).RecapsEnabled() {

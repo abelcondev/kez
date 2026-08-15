@@ -33,6 +33,27 @@ func (failingWriter) Write([]byte) (int, error) {
 	return 0, errWriteFailed
 }
 
+func TestSavedInteractivePermissionMode(t *testing.T) {
+	cases := []struct {
+		saved string
+		want  agent.PermissionMode
+	}{
+		{"auto", agent.PermissionModeAuto},
+		{"ask", agent.PermissionModeAsk},
+		{"unsafe", agent.PermissionModeUnsafe},
+		{"  unsafe  ", agent.PermissionModeUnsafe}, // trimmed
+		{"", agent.PermissionModeAsk},              // unset -> default
+		{"spec-draft", agent.PermissionModeAsk},    // non-interactive -> default
+		{"member-auto", agent.PermissionModeAsk},   // non-interactive -> default
+		{"bogus", agent.PermissionModeAsk},         // unknown -> default
+	}
+	for _, tc := range cases {
+		if got := savedInteractivePermissionMode(tc.saved); got != tc.want {
+			t.Errorf("savedInteractivePermissionMode(%q) = %q, want %q", tc.saved, got, tc.want)
+		}
+	}
+}
+
 func TestRunPrintsVersion(t *testing.T) {
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer

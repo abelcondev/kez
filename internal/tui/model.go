@@ -1754,6 +1754,9 @@ func (m model) updateModel(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// toggling into yolo opens network egress (and toggling out re-closes
 				// it) for the next command, matching a yolo launch.
 				m.agentOptions.Sandbox.SetUnsafeNetwork(m.permissionMode == agent.PermissionModeUnsafe)
+				// Persist the choice so it survives restart (mirrors /theme). Best-effort:
+				// a write failure just means the next launch falls back to the default.
+				m.persistPermissionModePreference()
 				return m, nil
 			}
 		case m.keyMatch(m.keyBindings.cycleReasoning, msg, func(tea.KeyMsg) bool { return keyCtrl(msg, 't') }):
@@ -5077,6 +5080,18 @@ func selfCorrectAutonomyForMode(mode agent.PermissionMode) string {
 	default: // ask, etc. — report the failure without starting an auto-fix round
 		return "low"
 	}
+}
+
+// persistPermissionModePreference writes the current permission mode to user
+// config so a shift+tab choice (auto/ask/yolo) is restored at the next launch
+// via Preferences.PermissionMode -> savedInteractivePermissionMode. Best-effort
+// and side-effect only: no config path (e.g. tests) is a silent no-op, matching
+// persistThemePreference.
+func (m model) persistPermissionModePreference() {
+	if strings.TrimSpace(m.userConfigPath) == "" {
+		return
+	}
+	_, _ = config.SetPermissionMode(m.userConfigPath, string(m.permissionMode))
 }
 
 func (m model) runAgentWithOptions(runID int, runCtx context.Context, prompt string, images []zeroruntime.ImageBlock, runOptions tuiAgentRunOptions) tea.Cmd {
