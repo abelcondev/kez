@@ -24,6 +24,7 @@ Choosing the stack is the **user's decision**, informed by your research — nev
 4. **Record the conventions the rest of the loop depends on**, in the architecture decision and reflected in `sdd/index.md`:
    - **Test runner and test file convention** — e.g. Vitest with `*.test.ts`.
    - **Test location** — a dedicated tests folder that mirrors the source tree (e.g. `tests/caja/vuelto.test.ts` for `src/caja/vuelto.ts`), unless the user prefers colocated. This is what `sdd-test` will honor.
+   - **Test import convention** — how tests import the code under test: the configured path alias (e.g. `$lib`, `~/`, a `tsconfig`/`vitest` alias) rather than deep relative paths. Record the exact alias so `sdd-test` never has to guess `../../..` depth (a repeated source of red-then-fix churn). If the project has no alias, say so and set up one during the first task if the runner supports it.
    - **UI component library / design system** — so UI work builds from it instead of hand-rolled CSS.
    - **Lint / typecheck / build commands** — the validators the loop runs.
 

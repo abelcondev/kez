@@ -27,6 +27,7 @@ Then the change due is S/40              → assert: expect(change).toBe(40)
 Read `sdd/index.md` for the runner, file pattern, and location decided in `sdd-stack`:
 
 - **Dedicated test folder that mirrors the source tree** (e.g. `src/caja/vuelto.ts` → `tests/caja/vuelto.test.ts`), unless the project chose colocated. Put every test where that convention says, so tests stay easy to find.
+- **Import via the recorded path alias, not deep relative paths.** `sdd-stack` records the project's test import convention in `sdd/index.md` (e.g. `$lib`, `~/`, a configured `tsconfig`/`vitest` alias). Use it: `import { charge } from '$lib/caja/vuelto'`, never `../../../src/lib/caja/vuelto`. Counting `../` depth by hand is a repeated red-then-fix waste; the alias is stable no matter where the test file sits. If no alias is recorded, match the existing sibling tests exactly.
 
 ## Coverage bar
 

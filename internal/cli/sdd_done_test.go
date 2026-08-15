@@ -87,3 +87,38 @@ func TestSDDDoneTellsToMarkReadyWhenProposalComplete(t *testing.T) {
 		t.Errorf("done output reported pending tasks after the proposal was complete:\n%s", got)
 	}
 }
+
+func TestSDDDoneRecordsResidualsAsFollowUpTasks(t *testing.T) {
+	root, task1, _ := setupProposalWithTasks(t)
+
+	var out, errBuf bytes.Buffer
+	args := []string{task1, "--residual", "role guard is client-side only", "--residual", "no e2e coverage yet"}
+	if code := runSDDDone(root, args, &out, &errBuf); code != exitSuccess {
+		t.Fatalf("runSDDDone = %d, stderr=%s", code, errBuf.String())
+	}
+	got := out.String()
+	if !strings.Contains(got, "Recorded 2 residual(s) as follow-up tasks") {
+		t.Errorf("done output missing residual summary:\n%s", got)
+	}
+
+	// Both residuals must now exist as pending tasks linked to the same decision.
+	st, err := sdd.ReadStatus(root)
+	if err != nil {
+		t.Fatalf("ReadStatus: %v", err)
+	}
+	var residualTitles []string
+	for _, task := range st.Tasks {
+		if strings.HasPrefix(task.Title, "Residual:") {
+			residualTitles = append(residualTitles, task.Title)
+			if refStem(task.Decision) != "001-staff" {
+				t.Errorf("residual task %q linked to %q, want decision 001-staff", task.Title, task.Decision)
+			}
+			if isDoneStatus(task.Status) {
+				t.Errorf("residual task %q should be pending, got %q", task.Title, task.Status)
+			}
+		}
+	}
+	if len(residualTitles) != 2 {
+		t.Errorf("expected 2 residual follow-up tasks, got %d: %v", len(residualTitles), residualTitles)
+	}
+}

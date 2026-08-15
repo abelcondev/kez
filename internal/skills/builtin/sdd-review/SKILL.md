@@ -43,7 +43,7 @@ Have it return findings as a list of `{ file, lines, category, severity (high|me
 ## Gate
 
 - **Do not run `kez sdd done` while any high-severity finding is unresolved** — correctness, security, or craft. If you judge one a false positive, say why rather than silently ignoring it.
-- Any **residual medium/low** you consciously chose not to fix goes in the PR description as a "known residual" with a one-line justification. Nothing is hidden.
+- Any **residual medium/low** you consciously chose not to fix must become **tracked work**, not a line that dies in a merged PR body. Pass it to the close step as `kez sdd ship <task> --residual "<finding>"` (repeatable) so it lands as a follow-up task on the same decision. Still note it in the PR description too, with a one-line justification. Nothing is hidden and nothing is forgotten.
 
 ## What this is not
 

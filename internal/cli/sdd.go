@@ -44,6 +44,10 @@ func runSDD(args []string, stdout io.Writer, stderr io.Writer, deps appDeps) int
 		return runSDDTask(root, args[1:], stdout, stderr)
 	case "done":
 		return runSDDDone(root, args[1:], stdout, stderr)
+	case "preflight":
+		return runSDDPreflight(root, stdout, stderr)
+	case "ship":
+		return runSDDShip(root, args[1:], stdout, stderr)
 	case "next":
 		return runSDDNext(root, stdout, stderr)
 	default:
@@ -239,21 +243,71 @@ func runSDDApproveDesign(root string, args []string, stdout io.Writer, stderr io
 	return exitSuccess
 }
 
-// runSDDDone marks a task done and appends a line to log.md in one step:
+// runSDDDone marks a task done and appends a line to log.md in one step. Each
+// --residual "<text>" turns a consciously-accepted review finding into a tracked
+// follow-up task on the same decision, so it lives in the backlog instead of
+// evaporating into a merged PR body:
 //
-//	kez sdd done <task-ref>
+//	kez sdd done <task-ref> [--residual "..." ...]
 func runSDDDone(root string, args []string, stdout io.Writer, stderr io.Writer) int {
 	positional := nonFlagArgs(args)
 	if len(positional) < 1 {
-		return writeExecUsageError(stderr, "usage: kez sdd done <task-ref>")
+		return writeExecUsageError(stderr, `usage: kez sdd done <task-ref> [--residual "..."]`)
 	}
 	rel, err := sdd.CompleteTask(root, positional[0], time.Now())
 	if err != nil {
 		return writeAppError(stderr, err.Error(), exitCrash)
 	}
 	fmt.Fprintf(stdout, "Marked %s done, appended sdd/log.md.\n", rel)
+	if residuals := flagValues(args, "--residual"); len(residuals) > 0 {
+		createResidualTasks(root, rel, residuals, stdout, stderr)
+	}
 	printProposalProgress(root, rel, stdout)
 	return exitSuccess
+}
+
+// createResidualTasks records each residual as a pending follow-up task linked to
+// the closed task's decision. Best-effort: a task with no decision link can't be
+// scoped to a proposal, so it warns and skips rather than orphaning the tasks.
+func createResidualTasks(root, taskRel string, residuals []string, stdout io.Writer, stderr io.Writer) {
+	decision := decisionRefForTask(root, taskRel)
+	if decision == "" {
+		fmt.Fprintf(stderr, "warning: %s has no decision link; cannot record residuals as follow-up tasks.\n", taskRel)
+		return
+	}
+	fmt.Fprintf(stdout, "\nRecorded %d residual(s) as follow-up tasks on %s:\n", len(residuals), decision)
+	for _, r := range residuals {
+		text := strings.TrimSpace(r)
+		if text == "" {
+			continue
+		}
+		title := text
+		if !strings.HasPrefix(strings.ToLower(title), "residual") {
+			title = "Residual: " + title
+		}
+		rel, err := sdd.AddTask(root, decision, title, time.Now())
+		if err != nil {
+			fmt.Fprintf(stderr, "warning: could not create residual task %q: %v\n", text, err)
+			continue
+		}
+		fmt.Fprintf(stdout, "  + %s\n", rel)
+	}
+}
+
+// decisionRefForTask returns the decision reference the given task links to
+// (verbatim, e.g. "decisions/001-staff.md"), or "" if unknown.
+func decisionRefForTask(root, taskRel string) string {
+	st, err := sdd.ReadStatus(root)
+	if err != nil {
+		return ""
+	}
+	want := refStem(taskRel)
+	for _, t := range st.Tasks {
+		if refStem(t.Name) == want {
+			return strings.TrimSpace(t.Decision)
+		}
+	}
+	return ""
 }
 
 // printProposalProgress prints the task checklist for the proposal the just-closed
@@ -423,6 +477,26 @@ func flagValue(args []string, flag string) (string, error) {
 	return "", nil
 }
 
+// flagValues returns every value of a repeatable --flag (space- or =-separated),
+// in order. Used for flags that may appear more than once, e.g. --residual.
+func flagValues(args []string, flag string) []string {
+	var out []string
+	for i := 0; i < len(args); i++ {
+		a := args[i]
+		if a == flag {
+			if i+1 < len(args) {
+				out = append(out, args[i+1])
+				i++
+			}
+			continue
+		}
+		if strings.HasPrefix(a, flag+"=") {
+			out = append(out, strings.TrimPrefix(a, flag+"="))
+		}
+	}
+	return out
+}
+
 // nonFlagArgs returns positional args, dropping flags and the value that
 // immediately follows a space-separated flag.
 func nonFlagArgs(args []string) []string {
@@ -487,7 +561,9 @@ Usage:
   kez sdd design <decision-ref> <t…>  Scaffold an in-review UI design linked to a decision
   kez sdd approve-design <design-ref> Approve a design, unblocking its decision's UI tasks
   kez sdd task <decision-ref> <t…>    Scaffold a pending task (Gherkin) linked to a decision
-  kez sdd done <task-ref>             Mark a task done and append to log.md
+  kez sdd done <task-ref> [--residual "…"]  Mark a task done; each --residual becomes a follow-up task
+  kez sdd preflight                   Check branch + remote reachability + gh auth before pushing
+  kez sdd ship <task-ref> [--residual "…"]  Pre-flight, then close the task (safe close before push/PR)
   kez sdd status                      Report decisions, tasks, and the current loop position
   kez sdd next                        Print the single recommended next step (resumable)
 

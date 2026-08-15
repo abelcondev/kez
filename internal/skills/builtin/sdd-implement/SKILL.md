@@ -40,7 +40,7 @@ Each specialist starts with zero context and grounds itself in the on-disk `sdd/
 
 - Every `code`-level Given/When/Then has a passing test.
 - Validators pass.
-- `sdd-review` run (both lenses); every high-severity finding fixed, residual medium/low noted in the PR.
+- `sdd-review` run (both lenses); every high-severity finding fixed, residual medium/low recorded as a follow-up task via `kez sdd ship <task> --residual "…"` (and noted in the PR).
 - Branch pushed, PR prepared — never merged to the protected branch by you.
 
 ## Anti-patterns

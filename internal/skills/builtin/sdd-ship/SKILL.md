@@ -17,13 +17,17 @@ Close the task and keep the proposal's PR current. This is the end of one turn o
 
 This step is **resumable**. A previous turn may have run out of budget partway through — so don't blindly redo finished work or open a second PR. Check what's already true, then do only the missing steps. Front-load the close and push (steps 1 and 3) before any optional polish, so a budget cutoff never leaves the task unclosed or the work unpushed.
 
-1. **Close the task** — flips its status and appends to `sdd/log.md`. Skip if it's already `done`:
+1. **Pre-flight and close the task** in one step:
 
    ```
-   kez sdd done <task-name>
+   kez sdd ship <task-name> [--residual "<one-line finding>" ...]
    ```
 
-   Its output prints the proposal's task checklist (done/pending) and tells you whether the proposal is now complete. Use that checklist verbatim for the PR body in step 5, and its complete/incomplete verdict for step 6.
+   `ship` runs a **pre-flight first** (branch is a feature branch, `origin` exists and is reachable via `ls-remote`, `gh` is authenticated as the right account) and only closes the task if it passes — so a renamed/deleted remote or the wrong account fails **loudly and early**, never after you've built the commit. If pre-flight fails, fix the ✗ it prints (bad remote URL, wrong `gh` account) before continuing; the task stays open. It is idempotent: re-running on an already-closed task just reprints the proposal's PR state.
+
+   Pass each residual medium/low review finding you consciously accepted as `--residual "…"`; each becomes a tracked follow-up task on the same decision instead of a line that dies in the merged PR body. Its output prints the proposal's task checklist (done/pending) and whether the proposal is now complete — use that checklist verbatim for the PR body in step 5, and its verdict for step 6.
+
+   (`kez sdd done <task-name>` still exists as the close-only path and also accepts `--residual`; prefer `ship` so the pre-flight always runs before you push.)
 
 2. **One PR per proposal.** All tasks of a proposal share one branch and land in a single PR. Never open a PR per task.
 
@@ -63,5 +67,6 @@ Back to the top of the feature loop: the next task or the next proposal. Run `ke
 - ❌ A separate PR for each task of the same proposal.
 - ❌ Marking the PR ready (or opening it non-draft) while tasks of the proposal are still pending.
 - ❌ `git push -u …` — the `-u` fails in the sandbox; push without it.
+- ❌ Committing/pushing before the pre-flight — a bad remote or wrong `gh` account then fails only after the work is built. Run `kez sdd ship` (or `kez sdd preflight`) first.
 - ❌ Opening a second PR when the proposal already has one — reuse it and refresh its body.
 - ❌ Closing without listing what the human still has to verify manually.
