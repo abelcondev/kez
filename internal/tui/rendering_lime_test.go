@@ -1326,6 +1326,44 @@ func TestComposerBoxFramesInputAndBottomModelLabel(t *testing.T) {
 	assertRenderedLineWidths(t, got, 96)
 }
 
+func TestComposerBoxTrailsAttachmentChipInline(t *testing.T) {
+	m := limeTestModel()
+	m.input.SetValue("look at this")
+	m.input.CursorEnd()
+	m.pendingImageLabels = []string{"shot.png"}
+
+	got := plainRender(t, m.composerBox(96))
+	// The chip trails the typed text on the SAME visual line, not stacked above it.
+	// (A caret cell sits between "this" and the chip, so match the shared line rather
+	// than an exact spacing.)
+	var chipLine string
+	for _, line := range strings.Split(got, "\n") {
+		if strings.Contains(line, "[Image #1]") {
+			chipLine = line
+			break
+		}
+	}
+	if !strings.Contains(chipLine, "look at this") {
+		t.Fatalf("composer box should trail the chip inline on the text line, got:\n%s", got)
+	}
+	assertRenderedLineWidths(t, got, 96)
+}
+
+func TestComposerBoxDropsAttachmentChipWhenLineFull(t *testing.T) {
+	m := limeTestModel()
+	// A last line wide enough that "text [Image #1]" cannot fit forces the chip onto
+	// its own line rather than overflow the box.
+	m.input.SetValue(strings.Repeat("x", 40))
+	m.input.CursorEnd()
+	m.pendingImageLabels = []string{"shot.png"}
+
+	got := plainRender(t, m.composerBox(44))
+	if !strings.Contains(got, "[Image #1]") {
+		t.Fatalf("composer box should still show the chip when it drops to its own line, got:\n%s", got)
+	}
+	assertRenderedLineWidths(t, got, 44)
+}
+
 func TestComposerBoxWrapsLongPrompt(t *testing.T) {
 	m := limeTestModel()
 	m.input.SetValue("Create a book library dashboard page with the Bootstrap 5.3 theme displaying a grid of book cards showing cover images, titles, authors, and reading progress bars.")

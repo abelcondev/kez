@@ -4089,17 +4089,31 @@ func (m model) composerBox(width int) string {
 	content := m.composerLine(innerWidth)
 	lines := strings.Split(content, "\n")
 
+	// Attachment chips ([Image #1] …) trail the typed text on the SAME line, so the
+	// composer reads "text [Image #1]" instead of stacking the chip above the input.
+	// When the last line has no room for the chip, it drops to its own line below
+	// rather than overflow the box.
+	chips := renderAttachmentChips(m.pendingImageLabels, m.pendingDocuments)
+	styledChips := zeroTheme.muted.Render(chips)
+	chipOnOwnLine := false
+	if chips != "" {
+		last := lines[len(lines)-1]
+		if lipgloss.Width(last)+1+lipgloss.Width(chips) <= innerWidth {
+			lines[len(lines)-1] = last + " " + styledChips
+		} else {
+			chipOnOwnLine = true
+		}
+	}
+
 	rendered := make([]string, 0, len(lines)+3)
 	rendered = append(rendered, zeroTheme.lineStrong.Render("╭"+strings.Repeat("─", width-2)+"╮"))
-	// Attachment chips ([Image #1] …) render INSIDE the box, above the input line,
-	// instead of as a separate row above the box.
-	if chips := renderAttachmentChips(m.pendingImageLabels, m.pendingDocuments); chips != "" {
-		fitted := fitStyledLine(zeroTheme.muted.Render(chips), innerWidth)
+	for _, line := range lines {
+		fitted := fitStyledLine(line, innerWidth)
 		pad := strings.Repeat(" ", maxInt(0, innerWidth-lipgloss.Width(fitted)))
 		rendered = append(rendered, zeroTheme.lineStrong.Render("│ ")+fitted+pad+zeroTheme.lineStrong.Render(" │"))
 	}
-	for _, line := range lines {
-		fitted := fitStyledLine(line, innerWidth)
+	if chipOnOwnLine {
+		fitted := fitStyledLine(styledChips, innerWidth)
 		pad := strings.Repeat(" ", maxInt(0, innerWidth-lipgloss.Width(fitted)))
 		rendered = append(rendered, zeroTheme.lineStrong.Render("│ ")+fitted+pad+zeroTheme.lineStrong.Render(" │"))
 	}
