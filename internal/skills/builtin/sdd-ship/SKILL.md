@@ -59,7 +59,14 @@ This step is **resumable**. A previous turn may have run out of budget partway t
 
 ## After merge
 
-Back to the top of the feature loop: the next task or the next proposal. Run `kez sdd next` for the single next step.
+Once the PR is merged, prune the merged branch and get the next step:
+
+```
+kez sdd cleanup   # deletes merged sdd/prop-*/feat/* branches, config-write-safe
+kez sdd next
+```
+
+`cleanup` uses `git update-ref -d`, not `git branch -d`, so it never hits the `.git/config` write the sandbox refuses (which otherwise leaves a "could not write config file … Operation not permitted" after deleting the branch). Then it's back to the top of the loop: the next task or the next proposal.
 
 ## Anti-patterns
 

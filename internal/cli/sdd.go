@@ -48,6 +48,8 @@ func runSDD(args []string, stdout io.Writer, stderr io.Writer, deps appDeps) int
 		return runSDDPreflight(root, stdout, stderr)
 	case "ship":
 		return runSDDShip(root, args[1:], stdout, stderr)
+	case "cleanup":
+		return runSDDCleanup(root, args[1:], stdout, stderr)
 	case "next":
 		return runSDDNext(root, stdout, stderr)
 	default:
@@ -564,6 +566,7 @@ Usage:
   kez sdd done <task-ref> [--residual "…"]  Mark a task done; each --residual becomes a follow-up task
   kez sdd preflight                   Check branch + remote reachability + gh auth before pushing
   kez sdd ship <task-ref> [--residual "…"]  Pre-flight, then close the task (safe close before push/PR)
+  kez sdd cleanup [--dry-run]         Delete merged proposal branches (config-write-safe, post-merge)
   kez sdd status                      Report decisions, tasks, and the current loop position
   kez sdd next                        Print the single recommended next step (resumable)
 
