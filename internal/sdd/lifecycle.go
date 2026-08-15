@@ -148,34 +148,50 @@ func AddTask(root, decisionRef, title string, now time.Time) (string, error) {
 	return relPath, nil
 }
 
-// designBody is the starting checklist for a design artifact. The design is the
-// components rendered live in the project's /design-system workbench route (code,
-// not an external mockup tool), so the artifact records the running route + a
-// screenshot of each state + the components used.
+// designBody is the starting checklist for a design artifact. A product screen is
+// coded hi-fi directly (no placeholder workbench build), so the design doc is a
+// lightweight spec — references + an ASCII wireframe + which base components
+// compose it — that the human approves before any UI code is written.
 const designBody = `# Design
 
-Link the running ` + "`/design-system`" + ` workbench route and capture the result so a
-reviewer can approve by exercising the live components.
+The spec for a product screen: gather references, sketch the layout as a
+wireframe, and record which base components compose it. The screen is then coded
+hi-fi **directly** — no placeholder build. The human approves this doc first.
 
-## Source
+## References
 
-- Workbench route: <http://localhost:<port>/design-system#<section>>
-- Components covered: <list the components/sections this design covers>
+What the UI should look like — ask the user before sketching and record whatever
+they provide (save images under this design's folder ` + "`sdd/designs/<NNN>/`" + `):
 
-## Screens
+- Figma: <url> (if given, pull frames/tokens with the figma MCP)
+- Image / Pencil / screenshot: <path>
+- Site or product to emulate: <url>
+- Or a written description of the intended look & feel.
 
-Embed or link a screenshot of each component/state (default, hover, focus,
-loading, error, empty, each variant).
+If the user has no reference, note that and describe the intended look here.
 
-## Components used
+## Wireframe
 
-List the design-system / workbench components each screen is built from (see the
-UI conventions in ` + "`sdd/index.md`" + `). Flag any primitive that is missing and must
-be added to the workbench first — do not hand-roll it in the screen.
+An ASCII/line sketch of each screen and key state — layout, regions, and where
+each component sits. One block per state (default, empty, loading, error):
 
-## Notes
+` + "```" + `
+┌───────────────────────────┐
+│  <sketch the layout>       │
+└───────────────────────────┘
+` + "```" + `
 
-Interactions, edge cases, and anything a reviewer must check before approval.
+## Composition
+
+- Base components used (from the ` + "`/design-system`" + ` workbench): <Button, Card, …>.
+- Product components coded directly for this screen: <name each>.
+- Missing base primitive to add to the workbench first (if any): <name>.
+
+## Behavior & states
+
+Interactions, empty/loading/error handling, and edge cases the reviewer must
+check. Behavior itself is covered by code tests in ` + "`sdd-test`" + `; the human
+verifies the live screen on localhost.
 `
 
 // CompleteTask marks a task done and appends a line to log.md, atomically closing

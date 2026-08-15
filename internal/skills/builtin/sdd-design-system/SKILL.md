@@ -1,11 +1,15 @@
 ---
 name: sdd-design-system
-description: Use right after the stack is chosen (or when a UI task needs a component that doesn't exist yet) to build the project's base components in code, in an isolated /design-system workbench route, and review them live before composing them into real screens. This replaces external mockup tools (Figma/Penpot) — components are designed directly in code.
+description: Use right after the stack is chosen (or when a UI task needs a base primitive that doesn't exist yet) to build the project's base components — tokens, primitives, and generic business-agnostic patterns — in code, in an isolated /design-system workbench route, reviewed live. Product screens are NOT built here; they are coded hi-fi directly (see sdd-design).
 ---
 
 # Design system (code-first workbench)
 
-The design system is built and reviewed **as real code, in an isolated route** — not mocked up in an external design tool. External mockup tools are not the gate here; the running `/design-system` route is. This is the foundations pass: it comes right after the stack decision and before any feature UI, and it is the source of truth every later screen composes from.
+The design system is the **base only** — tokens, primitives, and generic, business-agnostic patterns — built and reviewed as real code in an isolated route. It is *not* where product screens live. Feature-specific, business-meaning UI (a sign-in screen, a cash-register view, an order card) is **coded hi-fi directly** in the app via `sdd-design` + `sdd-implement`; only the reusable base it composes from is built here.
+
+**Base vs product — the dividing test:** *business-agnostic and reusable across features?* → base, build it here. *Feature-specific / carries business meaning?* → product, code it directly (not in the workbench).
+
+This is the foundations pass: it comes right after the stack decision and before any feature UI, and it is the source of truth every later screen composes from.
 
 ## Why a workbench route
 
@@ -17,14 +21,12 @@ Three tiers, each a section in the gallery:
 
 1. **Foundations** — tokens: color, spacing, typography scale, radius, shadow, light/dark. Everything binds to these; no magic values downstream.
 2. **Primitives** — the atoms: Button, Input, Textarea, Select, Checkbox/Radio, Switch, Label, Badge, Avatar, Spinner, Text/Heading. Each shows every interactive state.
-3. **Compositions** — presentational blocks built from primitives: small ones (`FormField` = Label + Input + error, `Card`, `Modal`, `SidebarItem`) and larger ones (`LoginCard`, `Sidebar`, `ContactForm`). These live in the workbench too — a login card, a sidebar, and a form are compositions, not screens.
+3. **Patterns** — *generic, business-agnostic* blocks built from primitives and reused across features: `FormField` (Label + Input + error), `Card`, `Modal`, `Table`, `SidebarItem`. These belong here only because any feature could use them. **Feature-specific blocks do NOT** — a `LoginCard`, a `StaffSignIn`, an `OrderCard` carry business meaning and are coded directly in their screen (see `sdd-design`), not added to the workbench.
 
-**The dividing line — presentation vs behavior.** The workbench holds only **presentational, props-driven** components: every state is triggered by props, with no real logic. Data, handlers, validation, routing, and API calls are the *feature's* job, not the design system's.
+**The dividing line — presentation vs behavior.** The base holds only **presentational, props-driven** components: every state is triggered by props, with no real logic. Data, handlers, validation, routing, and API calls are the *feature's* job.
 
-- Workbench: `<LoginCard state="error" />`, `<LoginCard state="loading" />` — each state rendered from mocked props.
-- Feature screen: `<LoginCard onSubmit={realAuth} />` — the real login route wires behavior and covers it with tests.
-
-So a composition like `LoginCard` is designed and reviewed in the workbench in all its visual states; the screen that gives it real auth is separate feature work (`sdd-implement` + `sdd-test`).
+- Base pattern: `<FormField label="PIN" error="…" />` — generic, any feature composes it.
+- Product screen: the sign-in view that arranges FormFields, wires real auth, and is coded hi-fi directly — never a workbench story.
 
 ### The shell — keep the gallery ordered, not a dump
 
@@ -36,7 +38,7 @@ The route is not a flat scroll of components. Give it a shell so it stays browsa
 
 **Drive the nav from a registry, never by hand.** Keep a stories manifest — an array of `{ tier, name, component }` — that feeds BOTH the sidebar and the routes, sorted by tier then name. Adding a component is one entry in the registry; it then appears in its group, in order, automatically. The menu can never drift from what exists.
 
-**Deep-linkable routes, one per component** — `/design-system/button`, `/design-system/login-card`. The design gate records the exact component's URL so the reviewer opens straight to it.
+**Deep-linkable routes, one per component** — `/design-system/button`, `/design-system/form-field`. Handy when iterating on a base component.
 
 **One consistent story frame per component:** title + one-line description → a labeled grid of every state → variants → sizes. Every component reads the same way.
 
@@ -47,16 +49,19 @@ design-system/
   <route>             # deep-linkable per component: /design-system/:name
   shell               # sidebar (grouped by tier) + main panel + theme toggle
   registry            # the stories manifest: [{ tier, name, component }] — drives nav AND routes
-  stories/            # one entry per component, all its states (button, form-field, login-card, sidebar)
+  stories/            # one entry per base component, all its states (button, form-field, card, modal)
 components/
   ui/                 # primitives
-  patterns/           # compositions (login-card, sidebar, forms)
+  patterns/           # generic business-agnostic patterns (form-field, card, modal, table)
 theme/                # tokens
+# Product screens/blocks are NOT here — they are coded hi-fi in the app (see sdd-design).
 ```
 
-### Adding a component later
+### Adding a base component later
 
-When a feature needs a new component (say a login card), do NOT build it inline in the screen. Add it to the workbench first: create `LoginCard` (plus any missing primitive) with every state, its `story`, and one entry in the registry (`{ tier: 'Compositions', name: 'login-card', … }`) — that entry makes it show up in the sidebar and get its own `/design-system/login-card` route. Review it live at the gate, then let the screen compose it. Each new component is a new, ordered gallery section, reviewed in isolation before it touches a real screen. This is the same `sdd-design` gate — the workbench simply grows.
+When a feature needs a **base primitive or generic pattern** that doesn't exist yet (say a `FormField` or a `Table`), do NOT hand-roll it inside the screen. Add it to the workbench first: create it with every state, its `story`, and one entry in the registry (`{ tier: 'Patterns', name: 'form-field', … }`) — that entry makes it show up in the sidebar and get its own route. Review it live at the gate, then let screens compose it.
+
+**Feature-specific blocks are the opposite** — a `LoginCard`, a `StaffSignIn`, an `OrderCard` are product, not base. They are coded hi-fi directly in their screen via `sdd-design` (wireframe + references), never added as a workbench story. Only genuinely reusable, business-agnostic pieces grow the workbench.
 
 ### Iterating on a component (design fixes & improvements)
 
@@ -81,7 +86,7 @@ Scope it right: a **fix or improvement to an existing component** is this lightw
 2. **Build the base tiers, in order** (see "How the workbench is structured" below):
    - **Foundations** — tokens/theme: color, spacing, radius, typography scale, dark/light. Everything else binds to these; no magic values downstream.
    - **Primitives** — Button, Input, Select, Checkbox, Label, Text, Link, plus layout (container, stack/grid, card, separator). Every interactive state visible in the gallery.
-   - Only what the product actually needs — don't build a component with no consumer. Feature-specific compositions (LoginCard, Sidebar, a concrete form) are NOT built in this foundations pass; they get added later, per feature, through the same gate.
+   - Only what the product actually needs — don't build a component with no consumer. Feature-specific blocks (LoginCard, StaffSignIn, a concrete order form) are **not** built here at all; they are coded hi-fi directly in their screen (`sdd-design`). Only base primitives and generic patterns live in the workbench.
 
 3. **Show every state.** For each component render: default, hover, focus, active, disabled, loading, error, empty, and each size/variant. If a state can't be triggered by props alone, add a toggle in the gallery so the reviewer can see it.
 

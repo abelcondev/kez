@@ -45,6 +45,17 @@ isolated route, and reviewed live — not mocked up in an external tool. Example
   CSS/utility classes when a component exists. If a primitive is missing, add it to
   the workbench first (a small design-system pass), then compose from it. -->
 
+## UI model
+
+Two classes of UI, kept separate:
+
+- **Base** — tokens, primitives (Button, Input, Card…), and generic business-agnostic patterns (FormField, Modal, Table). Built once in the `/design-system` workbench, reviewed live. Reusable across every feature.
+- **Product** — feature-specific, business-meaning screens and blocks (a sign-in screen, a cash-register view, an order card). **Coded hi-fi directly** in the app, composed from the base. Never a workbench placeholder.
+
+Dividing test: *business-agnostic and reusable across features?* → base. *Feature-specific / carries business meaning?* → product.
+
+For product UI the design step is a lightweight spec — the user's visual references + an ASCII wireframe in `sdd/designs/NNN.md`, approved before code — not a built placeholder. The human's visual QA is the live screen on localhost; screenshots are not committed.
+
 ## Test conventions
 
 <!-- Recorded by sdd-stack; honored by sdd-test. Example:

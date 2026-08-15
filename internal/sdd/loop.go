@@ -243,7 +243,7 @@ func (st LoopState) Next() NextAction {
 	}
 	if st.DesignInReview != "" {
 		return NextAction{
-			Summary: "A design is in review: " + st.DesignInReview + ". Open the /design-system workbench route and review the components live, then approve it before any UI code.",
+			Summary: "A design is in review: " + st.DesignInReview + ". Review it before any UI code — the base components live in the /design-system workbench, or the wireframe + references for a product screen — then approve it.",
 			Command: "kez sdd approve-design " + st.DesignInReview,
 			Gate:    true,
 		}
@@ -259,7 +259,7 @@ func (st LoopState) Next() NextAction {
 		task := st.PendingTasks[0]
 		if st.FirstTaskNeedsUI && !st.FirstTaskHasDesign {
 			return NextAction{
-				Summary: "Task " + task.Name + " is UI work with no approved design. Build its components in the /design-system workbench route first, review them live, record the design, then implement the screen.",
+				Summary: "Task " + task.Name + " is UI work with no approved design. Ask the user for visual references, sketch the layout as an ASCII wireframe in the design doc, get it approved, then code the screen hi-fi directly.",
 				Command: `kez sdd design ` + st.FirstTaskDecision + ` "<screen or flow>"`,
 				Skill:   "sdd-design",
 			}

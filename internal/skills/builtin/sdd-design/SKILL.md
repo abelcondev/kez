@@ -1,21 +1,34 @@
 ---
 name: sdd-design
-description: Use when a feature task ships user-facing UI and has no approved design yet — build the screen's components in the project's /design-system workbench route (code, not an external mockup tool), review them live, record the design, then stop at the approval gate before writing the screen.
+description: Use when a feature task ships user-facing UI and has no approved design yet — gather the user's visual references, sketch the layout as an ASCII wireframe in the design doc, stop at the approval gate, then code the screen hi-fi directly (no placeholder build).
 ---
 
 # Design (UI tasks only)
 
-A task that ships UI must have an **approved design before any UI code**. If the task does not touch UI, this phase does not apply — skip it entirely.
+A task that ships UI must have an **approved design before any UI code**. If the task does not touch UI, skip this phase entirely.
 
-The design is done **in code, in the project's `/design-system` workbench route** — not in an external mockup tool. External design apps are not the gate; the running workbench is. If the project has no workbench yet, build it first with `sdd-design-system` (that is the foundations pass).
+The design is **not a placeholder build** anymore. Product screens are coded **hi-fi, directly** — so the design artifact is a lightweight, fast-to-review spec: the user's visual references plus an ASCII wireframe of the layout. The human approves that spec (this is where they catch a badly-distributed layout before any code exists), then the screen is coded once, for real. One build, one review — no throwaway placeholder to build and review first.
+
+## Base vs product — what this phase designs
+
+- **Base components** (Button, Input, Card, tokens, generic patterns like FormField/Modal) live in the `/design-system` workbench and are built once via `sdd-design-system`. This phase does **not** rebuild them.
+- **Product components/screens** (a sign-in screen, a cash-register view, an order card) are **coded directly** in the app, composed from the base. This phase designs *those* — as a wireframe, not a workbench story.
+
+The dividing test: *business-agnostic and reusable across features?* → base (workbench). *Feature-specific / carries business meaning?* → product (code it directly, design it here).
 
 ## How to run it
 
-1. **Work in the `/design-system` workbench, not in the screen.** Build (or assemble) the components this task's screen needs there first, in isolation, with every state visible — default, hover, focus, loading, error, empty, each variant. This includes composed blocks: a login card, a sidebar, or a concrete form is a **composition** and belongs in the workbench (tier 3), built from primitives, driven entirely by props — `<LoginCard state="error" />`, not real auth.
+1. **Gather references first — ask the user.** Since there is no placeholder to iterate on, you need to know what they want it to look like *before* sketching. Ask directly (plain reply, not a command):
+   > ¿Tenés una referencia para esta pantalla? Figma, una imagen o boceto (Pencil), un sitio/producto a imitar, o me lo describís?
+   - **Figma URL** → use the figma MCP to pull frames, tokens, and layout.
+   - **Image / Pencil / screenshot** → have them paste it; save it under `sdd/designs/<NNN>/`.
+   - **A site/product to emulate** → note the URL and what to borrow.
+   - **Only a description** → capture it in words.
+   Record what they give in the design doc's `## References`. If they have none, say so and describe the intended look yourself for them to confirm.
 
-2. **Compose from the existing design system.** Use the workbench components recorded in `sdd/index.md` ("UI conventions"). Do not hand-roll raw CSS or utility-class soup when a component exists. If a primitive is missing, add it to the workbench first (a small design-system pass), then compose from it — never inline it into the screen.
+2. **Sketch the layout as an ASCII wireframe.** In the design doc, draw a line/box sketch of each screen and key state (default, empty, loading, error) — the kind of layout sketch that shows regions and where each component sits. This is the artifact the human reviews; it must communicate distribution and hierarchy, not pixels.
 
-3. **Keep behavior out of the workbench.** Only presentation lives there — states are triggered by props. Data, handlers, validation, routing, and API calls belong to the screen (the feature `implement` step), not the design system.
+3. **Record which base components compose it.** List the workbench components the screen builds from, the new product components you'll code directly, and any base primitive that is missing and must be added to the workbench first (a small `sdd-design-system` pass — never hand-roll a missing primitive inside the screen).
 
 4. **Record the design and open the gate:**
 
@@ -23,26 +36,23 @@ The design is done **in code, in the project's `/design-system` workbench route*
    kez sdd design <decisions/NNN-name.md> "<screen or flow>"
    ```
 
-   In the artifact, link the **running workbench route** for the components used and add a screenshot of each state. Then:
+   Fill in `## References`, `## Wireframe`, and `## Composition` in the created doc.
 
-   ```
-   kez sdd approve-design <designs/NNN-slug>
-   ```
-
-5. **Stop at the gate.** The human opens the workbench and exercises the components live. Ask them to reply with a short approval (e.g. "aprobado") — don't make them type a command; when they approve, run `kez sdd approve-design <designs/NNN-slug>` yourself on their behalf. Without an approved design, the loop refuses UI code — do not try to route around it.
-
-## Verification split
-
-- **Layout/visual correctness** is verified by the human (manual QA) against the live workbench.
-- **Logic behind the UI** (formatting, state, calculations) is still covered by code tests in `sdd-test`.
+5. **Stop at the gate.** The human reads the wireframe + references and checks how you're going to approach the UI. Ask them to reply with a short approval (e.g. "aprobado") — don't make them type a command; when they approve, run `kez sdd approve-design <designs/NNN-slug>` yourself on their behalf. Without an approved design the loop refuses UI code — do not route around it.
 
 ## After approval
 
-The design unblocks the task's UI code. Load `sdd-implement` to build the screen — composed from the approved workbench components.
+The design unblocks the task's UI code. Load `sdd-implement` and code the screen **hi-fi, directly**, composing from the approved base components and following the wireframe. There is no placeholder to reuse — build the real thing.
+
+## Verification split
+
+- **Layout/visual correctness** — verified by the human on **localhost** (manual QA). No screenshots are committed; a running screen beats a saved image.
+- **Logic behind the UI** (formatting, state, calculations) — covered by code tests in `sdd-test`.
 
 ## Anti-patterns
 
-- ❌ Mocking the screen in an external design tool instead of building components in the workbench.
-- ❌ Writing UI code before the design is approved.
-- ❌ Hand-rolling components that already exist in the workbench.
-- ❌ Trying to auto-generate Playwright/e2e for the visual layer — that is manual QA.
+- ❌ Building a placeholder/workbench composition of a product screen before coding it — that double-work is gone; code it hi-fi directly.
+- ❌ Sketching a wireframe without asking the user for references first (you'll guess the look and get it wrong).
+- ❌ Writing UI code before the wireframe is approved.
+- ❌ Coding a product screen with raw CSS when a base component exists — compose from the workbench; add a missing primitive there first.
+- ❌ Committing screenshots as a deliverable — the human's QA is the live localhost screen.

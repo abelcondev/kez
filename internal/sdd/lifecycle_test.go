@@ -198,7 +198,7 @@ func TestAddAndApproveDesign(t *testing.T) {
 		t.Fatalf("design path = %q", rel)
 	}
 	design := readFile(t, filepath.Join(root, rel))
-	for _, want := range []string{"type: Design", "status: in-review", "decision: decisions/002-caja-ui.md", "## Components used"} {
+	for _, want := range []string{"type: Design", "status: in-review", "decision: decisions/002-caja-ui.md", "## References", "## Wireframe", "## Composition"} {
 		if !strings.Contains(design, want) {
 			t.Errorf("design missing %q\n---\n%s", want, design)
 		}
