@@ -19,11 +19,15 @@ Build the task with test-driven discipline, on a feature branch, and carry it al
 
 5. **Review before you ship.** Once green, load **`sdd-review`**: a fresh-context pass over the diff across two lenses — correctness + security, and craft/maintainability (a reviewer subagent that flags oversized files, poor wiring, leaked coupling, missed reuse). Remediate the findings in one pass, then re-review. Every high-severity finding must be fixed before closing.
 
-6. **Close and open the PR.** Load **`sdd-ship`** for the done + PR steps:
+6. **Close and open the PR.** Load **`sdd-ship`** for the pre-flight + close + PR steps:
 
    ```
-   kez sdd done <task-name>
+   kez sdd ship <task-name>
    ```
+
+## Working context (`sdd/context.md`)
+
+Before implementing, read `sdd/context.md` — it holds the proposal's already-discovered surface (API shapes, store/module methods, key file paths, gotchas) so you don't re-explore the same files a previous turn already mapped. As you discover a stable fact worth the *next* turn not re-deriving, record it there under this proposal's branch heading — keep it a short map, not a log. This is what survives context compaction; lean on it instead of re-reading the backend each turn. When the proposal's PR merges, clear its section.
 
 ## Delegating to phase specialists (optional)
 

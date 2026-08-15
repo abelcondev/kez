@@ -7,6 +7,7 @@ Open Knowledge Format (OKF). It is read first at the start of every session.
 - `decisions/` — approved, numbered architectural decisions (historical).
 - `designs/` — approved UI designs (the live `/design-system` workbench route + screenshots), the gate before UI code.
 - `tasks/` — units of work with Gherkin acceptance criteria.
+- `context.md` — durable, proposal-scoped working memory (API shapes, key files, gotchas) so a new turn doesn't re-derive what the last one already found.
 - `log.md` — append-only history of what happened and when.
 
 ## The loop
