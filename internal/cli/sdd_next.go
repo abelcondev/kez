@@ -38,6 +38,22 @@ func printNextAction(stdout io.Writer, action sdd.NextAction) {
 	if action.Skill != "" {
 		fmt.Fprintf(stdout, "         skill: %s\n", action.Skill)
 	}
+	if action.Then != "" {
+		fmt.Fprintf(stdout, "         then:  %s\n", action.Then)
+	}
+}
+
+// printLoopNext resolves the loop's next step from disk and prints it under a
+// clear header, so a caller that just finished a step (close a task, ship) sees
+// exactly what follows instead of guessing. Best-effort: a read error prints
+// nothing rather than failing the command that already succeeded.
+func printLoopNext(root string, stdout io.Writer) {
+	state, err := sdd.ReadLoopState(root, currentGitBranch(root))
+	if err != nil {
+		return
+	}
+	fmt.Fprintf(stdout, "\n▶ Next step:\n")
+	printNextAction(stdout, state.Next())
 }
 
 // currentGitBranch returns the checked-out branch name by reading <root>/.git/HEAD,

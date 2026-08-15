@@ -139,6 +139,7 @@ func runSDDShip(root string, args []string, stdout io.Writer, stderr io.Writer) 
 		rel := "sdd/tasks/" + refStem(positional[0]) + ".md"
 		fmt.Fprintf(stdout, "\n%s is already closed — nothing to re-close.\n", rel)
 		printProposalProgress(root, rel, stdout)
+		printLoopNext(root, stdout)
 		return exitSuccess
 	}
 	return runSDDDone(root, args, stdout, stderr)

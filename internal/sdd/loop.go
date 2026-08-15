@@ -63,6 +63,10 @@ type NextAction struct {
 	Command string
 	Gate    bool
 	Skill   string
+	// Then is a short, human-readable horizon: the arc that typically follows this
+	// step ("review → ship → next task"), so a caller sees where things are heading
+	// instead of only the immediate action. Empty when there's nothing useful to add.
+	Then string
 }
 
 // ReadLoopState inspects <root>/sdd plus the given git branch (pass "" if
@@ -240,6 +244,7 @@ func (st LoopState) Next() NextAction {
 			Summary: "A proposal is in review: " + title + ". Review sdd/proposal.md, then approve it.",
 			Command: `kez sdd approve --title "` + title + `"`,
 			Gate:    true,
+			Then:    "approve → stack (if first) or design/tasks → implement",
 		}
 	}
 	if st.DesignInReview != "" {
@@ -263,6 +268,7 @@ func (st LoopState) Next() NextAction {
 				Summary: "Task " + task.Name + " is UI work with no approved design. Ask the user for visual references, sketch the layout as an ASCII wireframe in the design doc, get it approved, then code the screen hi-fi directly.",
 				Command: `kez sdd design ` + st.FirstTaskDecision + ` "<screen or flow>"`,
 				Skill:   "sdd-design",
+				Then:    "references → wireframe → approve (gate) → code hi-fi → review → ship",
 			}
 		}
 		if protectedBranches[st.Branch] {
@@ -282,6 +288,7 @@ func (st LoopState) Next() NextAction {
 		return NextAction{
 			Summary: "Implement pending task " + label + " [tier: " + string(tier) + "] (TDD: red → green), review at that tier, then ship it with `kez sdd ship " + task.Name + "`. One PR per proposal.",
 			Skill:   SkillImplement,
+			Then:    "TDD → review (tier " + string(tier) + ") → kez sdd ship → next task, or mark PR ready when the proposal is done",
 		}
 	}
 	// A product decision exists but no stack/architecture decision does yet: the
@@ -326,6 +333,7 @@ func (st LoopState) Next() NextAction {
 		Summary: "No open work. Add a task to the latest decision, or propose the next thing.",
 		Command: `kez sdd task ` + ref + ` "<task title>"`,
 		Skill:   "sdd-task",
+		Then:    "new task → implement, or `kez sdd propose` a new feature; merge any open PR first",
 	}
 }
 

@@ -47,6 +47,15 @@ Each specialist starts with zero context and grounds itself in the on-disk `sdd/
 - `sdd-review` run (both lenses); every high-severity finding fixed, residual medium/low recorded as a follow-up task via `kez sdd ship <task> --residual "…"` (and noted in the PR).
 - Branch pushed, PR prepared — never merged to the protected branch by you.
 
+## Always end pointing to the next step
+
+Never end a turn with the user unsure what happens next. `kez sdd done`/`ship`/`next` print a `▶ Next step` block (with a `then:` horizon) — surface it. Close every turn with a short, consistent hand-off:
+
+> ✅ Hecho: <what you just finished>.
+> ▶ Sigue: <the next step's summary> — ¿lo hago?
+
+If it's a human gate (approval), say so and wait. If it's automated work, offer to proceed. The user should always see the immediate next step and where it leads without having to ask.
+
 ## Anti-patterns
 
 - ❌ Writing code on `main`.

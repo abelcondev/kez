@@ -68,6 +68,8 @@ kez sdd next
 
 `cleanup` uses `git update-ref -d`, not `git branch -d`, so it never hits the `.git/config` write the sandbox refuses (which otherwise leaves a "could not write config file … Operation not permitted" after deleting the branch). Then it's back to the top of the loop: the next task or the next proposal.
 
+`kez sdd ship` (and `done`) print a `▶ Next step` block with a `then:` horizon. Always relay it to the user as a short hand-off — `✅ Hecho: … · ▶ Sigue: … — ¿lo hago?` — so they never end a turn unsure what comes next.
+
 ## Anti-patterns
 
 - ❌ Merging to `main` yourself.

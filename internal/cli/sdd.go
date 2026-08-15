@@ -277,6 +277,7 @@ func runSDDDone(root string, args []string, stdout io.Writer, stderr io.Writer) 
 		createResidualTasks(root, rel, residuals, stdout, stderr)
 	}
 	printProposalProgress(root, rel, stdout)
+	printLoopNext(root, stdout)
 	return exitSuccess
 }
 
