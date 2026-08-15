@@ -153,7 +153,11 @@ func runSDDStatus(root string, stdout io.Writer, stderr io.Writer) int {
 		if title != "" {
 			title = " — " + title
 		}
-		fmt.Fprintf(stdout, "    [%s] %s%s\n", statusOrDash(t.Status), t.Name, title)
+		tier := ""
+		if t.Tier != "" && !isDoneStatus(t.Status) {
+			tier = "  {tier: " + string(t.Tier) + "}"
+		}
+		fmt.Fprintf(stdout, "    [%s] %s%s%s\n", statusOrDash(t.Status), t.Name, title, tier)
 	}
 
 	// Loop position: the single next gate, so callers (and agents) can resume
@@ -198,15 +202,23 @@ func runSDDApprove(root string, args []string, stdout io.Writer, stderr io.Write
 func runSDDTask(root string, args []string, stdout io.Writer, stderr io.Writer) int {
 	positional := nonFlagArgs(args)
 	if len(positional) < 2 {
-		return writeExecUsageError(stderr, "usage: kez sdd task <decision-ref> <title...>")
+		return writeExecUsageError(stderr, "usage: kez sdd task <decision-ref> <title...> [--tier trivial|standard|critical]")
+	}
+	tier, err := flagValue(args, "--tier")
+	if err != nil {
+		return writeExecUsageError(stderr, err.Error())
 	}
 	decisionRef := positional[0]
 	title := strings.Join(positional[1:], " ")
-	rel, err := sdd.AddTask(root, decisionRef, title, time.Now())
+	rel, err := sdd.AddTaskWithTier(root, decisionRef, title, sdd.Tier(tier), time.Now())
 	if err != nil {
 		return writeAppError(stderr, err.Error(), exitCrash)
 	}
-	fmt.Fprintf(stdout, "Created task %s (pending, linked to %s).\n", rel, decisionRef)
+	if strings.TrimSpace(tier) != "" {
+		fmt.Fprintf(stdout, "Created task %s (pending, tier %s, linked to %s).\n", rel, tier, decisionRef)
+	} else {
+		fmt.Fprintf(stdout, "Created task %s (pending, tier inferred, linked to %s).\n", rel, decisionRef)
+	}
 	return exitSuccess
 }
 
@@ -562,7 +574,7 @@ Usage:
   kez sdd approve [--title <text>]    Promote proposal.md → decisions/NNN, update log + index
   kez sdd design <decision-ref> <t…>  Scaffold an in-review UI design linked to a decision
   kez sdd approve-design <design-ref> Approve a design, unblocking its decision's UI tasks
-  kez sdd task <decision-ref> <t…>    Scaffold a pending task (Gherkin) linked to a decision
+  kez sdd task <decision-ref> <t…> [--tier …]  Scaffold a pending task; --tier trivial|standard|critical (else inferred)
   kez sdd done <task-ref> [--residual "…"]  Mark a task done; each --residual becomes a follow-up task
   kez sdd preflight                   Check branch + remote reachability + gh auth before pushing
   kez sdd ship <task-ref> [--residual "…"]  Pre-flight, then close the task (safe close before push/PR)

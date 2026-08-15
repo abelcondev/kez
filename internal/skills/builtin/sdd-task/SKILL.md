@@ -33,6 +33,12 @@ A task is the smallest shippable slice with a clear definition of done. It is li
 
    Then fill the Given/When/Then in the generated task file.
 
+6. **Tier is auto-inferred — override only when it's wrong.** kez classifies the task's weight (`trivial | standard | critical`) from its title/tags and shows it in `kez sdd next`/`status`; it drives how much design gate and review the task gets. You don't set it normally. Override only when inference misreads the risk — e.g. force `critical` on a task that handles money/auth/data but doesn't say so, or `trivial` on a pure copy/rename:
+
+   ```
+   kez sdd task <decisions/NNN-name.md> "<title>" --tier critical
+   ```
+
 ## After this
 
 The loop routes to design (if UI) or straight to implementation. Load `sdd-implement` when it is time to write code.

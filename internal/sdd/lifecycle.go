@@ -95,7 +95,14 @@ func Promote(root, titleOverride string, now time.Time) (string, error) {
 
 // AddTask scaffolds tasks/NNN-slug.md, a pending task linked to decisionRef
 // (e.g. "decisions/003-auth.md"). Returns the new task's path relative to root.
+// The tier is left to inference (no frontmatter override).
 func AddTask(root, decisionRef, title string, now time.Time) (string, error) {
+	return AddTaskWithTier(root, decisionRef, title, "", now)
+}
+
+// AddTaskWithTier is AddTask with an explicit tier override written to the task's
+// frontmatter. An empty tier writes no `tier:` line, leaving it to inference.
+func AddTaskWithTier(root, decisionRef, title string, tier Tier, now time.Time) (string, error) {
 	title = strings.TrimSpace(title)
 	if title == "" {
 		return "", fmt.Errorf("task title is required")
@@ -129,6 +136,11 @@ func AddTask(root, decisionRef, title string, now time.Time) (string, error) {
 	doc.WriteString("\n")
 	doc.WriteString("tags: []\n")
 	doc.WriteString("status: pending\n")
+	if t, ok := parseTier(string(tier)); ok {
+		doc.WriteString("tier: ")
+		doc.WriteString(string(t))
+		doc.WriteString("\n")
+	}
 	doc.WriteString("timestamp: ")
 	doc.WriteString(now.UTC().Format(time.RFC3339))
 	doc.WriteString("\n")

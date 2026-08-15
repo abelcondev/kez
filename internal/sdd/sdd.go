@@ -69,6 +69,7 @@ type TaskInfo struct {
 	Title    string
 	Status   string
 	Decision string // decision ref this task links to (frontmatter `decision:`), or ""
+	Tier     Tier   // resolved ceremony weight: frontmatter override or inferred
 }
 
 // Status is a snapshot of the SDD knowledge base for reporting.
@@ -107,6 +108,7 @@ func ReadStatus(root string) (Status, error) {
 			Title:    fm["title"],
 			Status:   fm["status"],
 			Decision: fm["decision"],
+			Tier:     ResolveTier(fm),
 		})
 	}
 	sort.Slice(st.Tasks, func(i, j int) bool { return st.Tasks[i].Name < st.Tasks[j].Name })

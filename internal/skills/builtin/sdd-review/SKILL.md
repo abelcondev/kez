@@ -7,6 +7,16 @@ description: Use after a task is green and before opening its PR — run a fresh
 
 A second pass with clean context catches blind spots the implementing context misses. This gate runs **before the PR** and does not replace the human review at merge — it precedes it, so the human sees already-audited code.
 
+## Scale the review to the task's tier
+
+The task carries a **tier** (shown by `kez sdd next`/`status`, resolved from its frontmatter or inferred). Match the review depth to it so a placeholder screen doesn't pay the same tax as the payment flow:
+
+- **trivial** — Lens 0 (cheap greps) + a single correctness pass. Skip the craft subagent and skip round 2. **Do not refactor adjacent files** under review — fix only what the task touched.
+- **standard** (default) — Lens 0 + Lens A + Lens B, with the remediation loop below (round 2 only if round 1 changed code).
+- **critical** (money, auth, data) — the full thing: both rounds **always** run, and `/security-review` (Lens A) is mandatory, never skipped.
+
+If a task tagged trivial/standard turns out to touch money, auth, or data, **bump it up** — say so and review at the higher tier. Never silently under-review; only escalate, never quietly downgrade.
+
 Review has a **cheap static pre-pass**, **two model-driven lenses**, and a **remediation loop**: knock out the deterministic smells for free, find the rest with fresh eyes, fix them, then re-check that the fixes hold.
 
 ## Lens 0 — cheap static pre-pass (run first)
@@ -41,7 +51,7 @@ Have it return findings as a list of `{ file, lines, category, severity (high|me
 1. **Round 1** — run Lens 0 (cheap greps) first and fix its hits, then run Lens A and Lens B; collect all findings.
 2. **Fix** — address every **high** and **medium** finding: split the file, extract the helper, rewire, dedupe, delete the dead code. Fix the cause, not the symptom. Keep the diff scoped to the task — this is remediation, not gold-plating.
 3. **Re-run validators** (tests, typecheck, lint, build) after the fixes.
-4. **Round 2** — re-run the craft subagent on the new diff to confirm the fixes hold and introduced no new smells.
+4. **Round 2 — only if round 1 changed code** (always for `critical`). If round 1 found nothing to fix, the diff is unchanged and a second pass is wasted work — skip it. Otherwise re-run the craft subagent on the new diff to confirm the fixes hold and introduced no new smells.
 5. Stop after **2 rounds** — do not iterate forever chasing polish.
 
 ## Gate

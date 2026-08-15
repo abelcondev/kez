@@ -118,6 +118,7 @@ func ReadLoopState(root, branch string) (LoopState, error) {
 			Title:    fm["title"],
 			Status:   status,
 			Decision: strings.TrimSpace(fm["decision"]),
+			Tier:     ResolveTier(fm),
 		})
 	}
 
@@ -274,8 +275,12 @@ func (st LoopState) Next() NextAction {
 		if task.Title != "" {
 			label += " — " + task.Title
 		}
+		tier := task.Tier
+		if tier == "" {
+			tier = TierStandard
+		}
 		return NextAction{
-			Summary: "Implement pending task " + label + " (TDD: red → green), review, then close it with `kez sdd done " + task.Name + "`. One PR per proposal.",
+			Summary: "Implement pending task " + label + " [tier: " + string(tier) + "] (TDD: red → green), review at that tier, then ship it with `kez sdd ship " + task.Name + "`. One PR per proposal.",
 			Skill:   SkillImplement,
 		}
 	}
