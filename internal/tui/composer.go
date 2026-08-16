@@ -27,7 +27,20 @@ type composerPastePreview struct {
 	start  int
 	end    int
 	label  string
+	// imageID is the stable id of the attached image this preview stands in for,
+	// or 0 for an ordinary pasted-text preview. Image previews back a one-rune
+	// sentinel (imageTokenSentinel) in the buffer and render as a "[Image #k]" chip
+	// whose number is assigned dynamically by validComposerPastePreviews, so the
+	// numbering stays 1..N in reading order no matter which tokens are deleted.
+	imageID int
 }
+
+// imageTokenSentinel is the one-rune placeholder inserted into the composer buffer
+// for each attached image. It is hidden behind the preview's "[Image #k]" chip in
+// the display and stripped when the prompt is submitted. OBJECT REPLACEMENT
+// CHARACTER (U+FFFC) is used precisely because it means "an object goes here" and
+// no user types it.
+const imageTokenSentinel = '￼'
 
 func insertComposerText(state composerState, text string) composerState {
 	state = normalizeComposerState(state)
@@ -649,6 +662,16 @@ func validComposerPastePreviews(state composerState, previews []composerPastePre
 		}
 		out = append(out, preview)
 		lastEnd = preview.end
+	}
+	// Number the surviving image chips 1..N in reading order. Doing it here — the
+	// one gate every display/cursor path funnels through — keeps the labels correct
+	// after any edit without a separate reconcile pass.
+	imageRank := 0
+	for i := range out {
+		if out[i].imageID != 0 {
+			imageRank++
+			out[i].label = "[Image #" + strconv.Itoa(imageRank) + "]"
+		}
 	}
 	return out
 }

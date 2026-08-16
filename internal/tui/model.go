@@ -508,6 +508,14 @@ type model struct {
 	// no attachments = today's text-only behavior exactly.
 	pendingImages      []zeroruntime.ImageBlock
 	pendingImageLabels []string
+	// pendingImageIDs runs lockstep with pendingImages: each entry is the stable id
+	// of the inline "[Image #k]" composer token that stands in for that image, so a
+	// deleted token can be matched back to the image it dropped (see
+	// resolveComposerImageTokens). nextImageID hands out those ids. Empty for images
+	// staged without a token (e.g. /retry re-staging), which fall back to the
+	// manifest-based order.
+	pendingImageIDs []int
+	nextImageID     int
 
 	// pendingDocuments holds PDF text layers staged by /image for the next user
 	// turn; the text is prepended to the prompt as a preamble at submit time and
@@ -4089,31 +4097,17 @@ func (m model) composerBox(width int) string {
 	content := m.composerLine(innerWidth)
 	lines := strings.Split(content, "\n")
 
-	// Attachment chips ([Image #1] …) trail the typed text on the SAME line, so the
-	// composer reads "text [Image #1]" instead of stacking the chip above the input.
-	// When the last line has no room for the chip, it drops to its own line below
-	// rather than overflow the box.
-	chips := renderAttachmentChips(m.pendingImageLabels, m.pendingDocuments)
-	styledChips := zeroTheme.muted.Render(chips)
-	chipOnOwnLine := false
-	if chips != "" {
-		last := lines[len(lines)-1]
-		if lipgloss.Width(last)+1+lipgloss.Width(chips) <= innerWidth {
-			lines[len(lines)-1] = last + " " + styledChips
-		} else {
-			chipOnOwnLine = true
-		}
-	}
-
 	rendered := make([]string, 0, len(lines)+3)
 	rendered = append(rendered, zeroTheme.lineStrong.Render("╭"+strings.Repeat("─", width-2)+"╮"))
-	for _, line := range lines {
-		fitted := fitStyledLine(line, innerWidth)
+	// Images now live inline in the input as editable [Image #N] chips, so only the
+	// document chips ([Doc #N]) still ride a dedicated row above the input line.
+	if chips := renderAttachmentChips(nil, m.pendingDocuments); chips != "" {
+		fitted := fitStyledLine(zeroTheme.muted.Render(chips), innerWidth)
 		pad := strings.Repeat(" ", maxInt(0, innerWidth-lipgloss.Width(fitted)))
 		rendered = append(rendered, zeroTheme.lineStrong.Render("│ ")+fitted+pad+zeroTheme.lineStrong.Render(" │"))
 	}
-	if chipOnOwnLine {
-		fitted := fitStyledLine(styledChips, innerWidth)
+	for _, line := range lines {
+		fitted := fitStyledLine(line, innerWidth)
 		pad := strings.Repeat(" ", maxInt(0, innerWidth-lipgloss.Width(fitted)))
 		rendered = append(rendered, zeroTheme.lineStrong.Render("│ ")+fitted+pad+zeroTheme.lineStrong.Render(" │"))
 	}
@@ -4364,7 +4358,25 @@ func (m model) handleSubmit() (tea.Model, tea.Cmd) {
 		m.clearSuggestions()
 		return m, nil
 	}
+	// Consume inline [Image #N] chips before parsing: strip their sentinels from the
+	// text and lock the staged images to the tokens' reading order (dropping any the
+	// user deleted). No-op when no image tokens are present.
+	imageOnly := false
+	if m.hasImageTokens() {
+		var imgs []zeroruntime.ImageBlock
+		var labels []string
+		input, imgs, labels = m.resolveComposerImageTokens()
+		m.pendingImages = imgs
+		m.pendingImageLabels = labels
+		m.pendingImageIDs = nil
+		// Chips but no words: still a valid turn ("what's in this image?"). Mark it so
+		// the empty parse below is upgraded to a prompt instead of a no-op.
+		imageOnly = strings.TrimSpace(input) == "" && len(imgs) > 0
+	}
 	command := parseCommand(input)
+	if imageOnly {
+		command = parsedCommand{kind: commandPrompt, text: input}
+	}
 	// A pending /clear or /quit leave-confirmation is armed for the immediately-next
 	// repeat of that same command only; any other submission — including one queued
 	// or deferred by the early returns below — disarms it. Runs before those returns
@@ -4772,6 +4784,7 @@ func (m model) dispatchCommand(command parsedCommand) (tea.Model, tea.Cmd) {
 		// silently dropping the image/PDF context and answering a different task.
 		m.pendingImages = m.lastImages
 		m.pendingImageLabels = m.lastImageLabels
+		m.pendingImageIDs = nil // re-staged without tokens: fall back to manifest order
 		m.pendingDocuments = m.lastDocuments
 		return m.launchPrompt(m.lastPrompt)
 	case commandEdit:
@@ -4786,6 +4799,7 @@ func (m model) dispatchCommand(command parsedCommand) (tea.Model, tea.Cmd) {
 		// answer a different task (the same gap /retry guards against).
 		m.pendingImages = m.lastImages
 		m.pendingImageLabels = m.lastImageLabels
+		m.pendingImageIDs = nil // re-staged without tokens: fall back to manifest order
 		m.pendingDocuments = m.lastDocuments
 		m.input.SetValue(m.lastPrompt)
 		return m, nil
@@ -4912,6 +4926,7 @@ func (m model) launchPrompt(prompt string) (model, tea.Cmd) {
 	// turn was recorded; just clear the staged queues now.
 	m.pendingImages = nil
 	m.pendingImageLabels = nil
+	m.pendingImageIDs = nil
 	runCtx, cancel := context.WithCancel(m.ctx)
 	m = m.beginRun(cancel)
 	return m, tea.Batch(m.runAgent(m.activeRunID, runCtx, prompt, turnImages), m.spinner.Tick)

@@ -81,6 +81,7 @@ func (m model) startNewSession() model {
 	// documents, or queued text.
 	m.pendingImages = nil
 	m.pendingImageLabels = nil
+	m.pendingImageIDs = nil
 	m.pendingDocuments = nil
 	m.queuedMessage = ""
 	// The remembered /retry attachment snapshot belongs to the previous session

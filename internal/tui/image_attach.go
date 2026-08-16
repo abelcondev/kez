@@ -144,12 +144,10 @@ func (m model) attachClipboardImage(data []byte, mediaType string) model {
 	if len(data) > imageinput.MaxImageBytes {
 		return m.appendImageNotice("Clipboard image is larger than the 10 MiB limit.")
 	}
-	m.pendingImages = append(m.pendingImages, zeroruntime.ImageBlock{
+	return m.stageImageToken(zeroruntime.ImageBlock{
 		MediaType: mediaType,
 		Data:      data,
-	})
-	m.pendingImageLabels = append(m.pendingImageLabels, "clipboard")
-	return m
+	}, "clipboard")
 }
 
 // handleImageCommand processes "/image <path>" and "/image clear". A bare
@@ -165,6 +163,7 @@ func (m model) handleImageCommand(arg string) model {
 	case strings.EqualFold(trimmed, "clear"):
 		m.pendingImages = nil
 		m.pendingImageLabels = nil
+		m.pendingImageIDs = nil
 		m.pendingDocuments = nil
 		return m.appendImageNotice("Cleared pending attachments.")
 	}
@@ -191,11 +190,93 @@ func (m model) handleImageCommand(arg string) model {
 		return m.appendImageNotice(err.Error())
 	}
 
+	// No "attached" system message: the inline [Image #N] chip dropped into the
+	// composer is the confirmation, matching the compact attach UX.
+	return m.stageImageToken(block, filepath.Base(trimmed))
+}
+
+// stageImageToken records one attached image and drops a "[Image #k]" chip token
+// into the composer at the cursor, so the user can type before and after it and
+// delete it as a unit — the Claude Code feel. The chip is backed by a one-rune
+// sentinel (imageTokenSentinel) in the buffer that a paste-preview stands in for
+// visually and that submit strips out. Every image-attach path funnels through
+// here so the token and the pendingImages/pendingImageLabels/pendingImageIDs
+// slices stay in lockstep.
+func (m model) stageImageToken(block zeroruntime.ImageBlock, label string) model {
+	m.nextImageID++
+	id := m.nextImageID
+	state := m.currentComposerState()
+	insertAt := state.cursor
+	previews := composerPastePreviewsAfterInsert(m.composerPastePreviews, insertAt, 1)
+	m.setComposerState(insertComposerText(state, string(imageTokenSentinel)))
+	previews = append(previews, composerPastePreview{
+		active:  true,
+		start:   insertAt,
+		end:     insertAt + 1,
+		label:   "[Image]", // placeholder; validComposerPastePreviews assigns the real #k
+		imageID: id,
+	})
+	sortComposerPastePreviews(previews)
+	m.composerPastePreviews = previews
 	m.pendingImages = append(m.pendingImages, block)
-	m.pendingImageLabels = append(m.pendingImageLabels, filepath.Base(trimmed))
-	// No "attached" system message: the composer attachment chip ([Image #N]) is
-	// the confirmation, matching the compact attach UX.
+	m.pendingImageLabels = append(m.pendingImageLabels, label)
+	m.pendingImageIDs = append(m.pendingImageIDs, id)
 	return m
+}
+
+// hasImageTokens reports whether the composer holds any inline "[Image #k]" chips.
+func (m model) hasImageTokens() bool {
+	for _, p := range validComposerPastePreviews(m.currentComposerState(), m.composerPastePreviews) {
+		if p.imageID != 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// resolveComposerImageTokens consumes the inline image chips at submit time: it
+// returns the composer text with every image sentinel stripped (a double space
+// left at the removal site collapsed) and the staged images/labels reordered to
+// the tokens' reading order, dropping any image whose token the user deleted. Call
+// it before clearComposer wipes the previews. With no image tokens present it
+// returns the text and pending slices unchanged, so /retry and tests keep their
+// manifest-based order.
+func (m model) resolveComposerImageTokens() (string, []zeroruntime.ImageBlock, []string) {
+	state := m.currentComposerState()
+	valid := validComposerPastePreviews(state, m.composerPastePreviews)
+	runes := []rune(state.text)
+	var b strings.Builder
+	images := make([]zeroruntime.ImageBlock, 0, len(m.pendingImages))
+	labels := make([]string, 0, len(m.pendingImageLabels))
+	found := false
+	last := 0
+	for _, p := range valid {
+		if p.imageID == 0 {
+			continue // ordinary paste preview: its real text flows through untouched
+		}
+		found = true
+		b.WriteString(string(runes[last:p.start]))
+		last = p.end
+		if idx := indexOfInt(m.pendingImageIDs, p.imageID); idx >= 0 {
+			images = append(images, m.pendingImages[idx])
+			labels = append(labels, m.pendingImageLabels[idx])
+		}
+	}
+	if !found {
+		return state.text, m.pendingImages, m.pendingImageLabels
+	}
+	b.WriteString(string(runes[last:]))
+	text := strings.TrimSpace(strings.ReplaceAll(b.String(), "  ", " "))
+	return text, images, labels
+}
+
+func indexOfInt(xs []int, target int) int {
+	for i, x := range xs {
+		if x == target {
+			return i
+		}
+	}
+	return -1
 }
 
 // pendingDocument is a PDF staged by /image for the next user turn: its extracted
@@ -224,11 +305,10 @@ func (m model) handleDocumentAttach(path string) model {
 		m.pendingDocuments = append(m.pendingDocuments, pendingDocument{label: label, text: doc.Text})
 	}
 	for _, block := range doc.Images {
-		m.pendingImages = append(m.pendingImages, block)
-		m.pendingImageLabels = append(m.pendingImageLabels, label)
+		m = m.stageImageToken(block, label)
 	}
-	// The composer attachment chip ([Doc #N] / [Image #N]) is the confirmation; no
-	// "attached" system message.
+	// The composer chip ([Doc #N] for the text layer, inline [Image #N] for each
+	// rendered page) is the confirmation; no "attached" system message.
 	return m
 }
 
@@ -276,6 +356,9 @@ func (m model) removeLastAttachment() (model, bool) {
 		m.pendingImageLabels = m.pendingImageLabels[:n-1]
 		if len(m.pendingImages) > 0 {
 			m.pendingImages = m.pendingImages[:len(m.pendingImages)-1]
+		}
+		if len(m.pendingImageIDs) > 0 {
+			m.pendingImageIDs = m.pendingImageIDs[:len(m.pendingImageIDs)-1]
 		}
 		return m, true
 	}

@@ -145,7 +145,9 @@ func TestImageCommandClear(t *testing.T) {
 	updated, _ := m.handleSubmit()
 	m = updated.(model)
 
-	m.input.SetValue("/image clear")
+	// /image left an inline token in the (now active) composer, so type the clear
+	// command into it rather than SetValue, which the active composer ignores.
+	m = typeRunes(t, m, "/image clear")
 	updated, _ = m.handleSubmit()
 	next := updated.(model)
 
@@ -188,15 +190,17 @@ func TestImageCommandMissingFileNotice(t *testing.T) {
 	}
 }
 
-func TestTranscriptViewShowsImageChips(t *testing.T) {
+func TestComposerShowsInlineImageChips(t *testing.T) {
 	m := newModel(context.Background(), Options{ModelName: "gpt-4.1"})
 	m.width = 100
 	m.height = 30
-	m.pendingImageLabels = []string{"photo.png", "diagram.gif"}
+	png := []byte{0x89, 'P', 'N', 'G'}
+	m = m.attachClipboardImage(png, "image/png")
+	m = m.attachClipboardImage(png, "image/png")
 
-	view := m.transcriptView()
-	if !strings.Contains(view, "[Image #1]") || !strings.Contains(view, "[Image #2]") {
-		t.Fatalf("transcript view should show numbered image chips, got:\n%s", view)
+	got := plainRender(t, m.composerBox(96))
+	if !strings.Contains(got, "[Image #1]") || !strings.Contains(got, "[Image #2]") {
+		t.Fatalf("composer should show inline numbered image chips, got:\n%s", got)
 	}
 }
 
@@ -228,8 +232,10 @@ func TestSubmitThreadsImagesThenClears(t *testing.T) {
 	if len(m.pendingImages) != 1 {
 		t.Fatalf("setup: expected 1 staged image, got %d", len(m.pendingImages))
 	}
+	// /image drops an inline [Image #1] token into the composer; type the message
+	// after it, then submit (resolve strips the sentinel and threads the image).
+	m = typeRunes(t, m, "describe this")
 
-	m.input.SetValue("describe this")
 	updated, cmd := m.handleSubmit()
 	next := updated.(model)
 	if cmd == nil {
@@ -285,10 +291,11 @@ func TestSubmitDropsImagesWhenModelSwitchedToNonVision(t *testing.T) {
 		t.Fatalf("setup: expected 1 staged image, got %d", len(m.pendingImages))
 	}
 
-	// Simulate a /model switch to a non-vision (catalog-unknown) model.
+	// Type the message after the inline [Image #1] token, then simulate a /model
+	// switch to a non-vision (catalog-unknown) model before submit.
+	m = typeRunes(t, m, "describe this")
 	m.modelName = "totally-unknown-custom"
 
-	m.input.SetValue("describe this")
 	updated, cmd := m.handleSubmit()
 	next := updated.(model)
 	if cmd == nil {
@@ -575,8 +582,8 @@ func TestMultiImagePromptRecordsChipsAndOrderManifest(t *testing.T) {
 	if len(m.pendingImages) != 2 {
 		t.Fatalf("setup: want 2 staged images, got %d (vision gate?)", len(m.pendingImages))
 	}
-
-	m.input.SetValue("set border on image #1 and color on image #2")
+	// Both attaches dropped inline [Image #N] tokens; type the prompt after them.
+	m = typeRunes(t, m, "set border on image #1 and color on image #2")
 	updated, cmd := m.handleSubmit()
 	next := updated.(model)
 	if cmd == nil {
