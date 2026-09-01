@@ -41,6 +41,15 @@ type StopReason string
 
 const (
 	StopReasonSpecReviewRequired StopReason = "spec_review_required"
+	// StopReasonSettled marks a run that finished cleanly: the model produced a
+	// final answer and the convergence guard's rework budget was never exhausted.
+	// The accepted terminal state — the counterpart to StopReasonStalled.
+	StopReasonSettled StopReason = "settled"
+	// StopReasonStalled marks a run the convergence guard halted because the same
+	// code was reworked pass after pass without converging (the "re-fixes what it
+	// already fixed" loop). The escalate-to-human terminal state: fail-closed, in
+	// code — not a prose suggestion the model can ignore.
+	StopReasonStalled StopReason = "stalled"
 )
 
 const (

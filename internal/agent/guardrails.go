@@ -61,6 +61,23 @@ const (
 	// INCOMPLETE rather than nudging forever (and it is still bounded by maxTurns
 	// and the run deadline).
 	maxContinueNudges = 3
+
+	// maxFileReworkPasses halts the run when a SINGLE file has been mutated in
+	// this many separate turns AFTER the first one that touched it — the
+	// "re-fixes what it already fixed" loop that never converges. The first turn
+	// to touch a file is initial work and costs nothing; every later turn that
+	// touches it again spends one rework pass. Set conservatively (matching the
+	// other guards' ethos) so legitimate multi-step work on one file — write it,
+	// then add its tests, then fix one failure — never trips it; only genuine
+	// churn does.
+	maxFileReworkPasses = 4
+
+	// maxTotalReworkPasses halts the run when rework passes SUMMED across all
+	// files reach this many, catching churn that spreads thin — many files each
+	// re-touched a couple of times — rather than hammering one file. Higher than
+	// the per-file cap because broad, shallow rework is a weaker loop signal than
+	// pounding the same file over and over.
+	maxTotalReworkPasses = 8
 )
 
 // continueNudgeMarker is a stable substring for tests.
@@ -364,6 +381,35 @@ func toolFailureStopAnswer(toolName string, count int) string {
 		"Please check the request or adjust the tool arguments."
 }
 
+// stalledStopPrefix opens every convergence-guard STALLED stop answer, so
+// IsStalledStop can classify the terminal state from the final message alone.
+const stalledStopPrefix = "Run stalled: "
+
+// stalledStopSuffix is the shared tail: why the run halted and what to do next.
+const stalledStopSuffix = " without converging. I stopped instead of looping further so it doesn't " +
+	"burn tokens — review the current state and decide the next step."
+
+// stalledFileReason is the stop answer when one file was reworked past the
+// per-file cap.
+func stalledFileReason(file string, passes int) string {
+	return stalledStopPrefix + "the file " + file + " was reworked " + strconv.Itoa(passes) +
+		" times" + stalledStopSuffix
+}
+
+// stalledTotalReason is the stop answer when rework spread across files past the
+// aggregate cap.
+func stalledTotalReason(total int) string {
+	return stalledStopPrefix + "the same code was reworked " + strconv.Itoa(total) +
+		" times across multiple files" + stalledStopSuffix
+}
+
+// IsStalledStop reports whether content IS the convergence guard's terminal
+// STALLED stop answer, so consumers (session classification, /resume) can tell a
+// non-convergent halt from an ordinary final answer.
+func IsStalledStop(content string) bool {
+	return strings.HasPrefix(strings.TrimSpace(content), stalledStopPrefix)
+}
+
 // The no-output stop answer is assembled from these fixed parts (only the turn
 // count varies). IsNoProgressStop matches all three so a legitimate message that
 // merely quotes the marker substring is not misclassified as a failed empty run.
@@ -463,10 +509,21 @@ type guardState struct {
 	// toolFailures tracks consecutive same-error failures per tool, keyed by tool
 	// name, so the loop can hint then halt instead of looping forever.
 	toolFailures map[string]*toolFailureRecord
+	// fileMutationTurns counts the number of distinct turns each file was mutated
+	// in. It only ever grows (a file is never un-mutated), so the rework budget is
+	// MONOTONIC: the model cannot reset it by declaring a file "done" and later
+	// re-opening it. A file's rework-pass count is fileMutationTurns[file] - 1.
+	fileMutationTurns map[string]int
+	// totalReworkPasses is the monotonic sum of rework passes across every file,
+	// driving the aggregate convergence cap.
+	totalReworkPasses int
 }
 
 func newGuardState() *guardState {
-	return &guardState{toolFailures: map[string]*toolFailureRecord{}}
+	return &guardState{
+		toolFailures:      map[string]*toolFailureRecord{},
+		fileMutationTurns: map[string]int{},
+	}
 }
 
 // observeToolResult tracks repeated identical failures of a tool. A successful
@@ -498,6 +555,48 @@ func (state *guardState) observeToolResult(name string, failed bool, output stri
 		outcome.InjectHint = true
 	}
 	return outcome
+}
+
+// convergenceOutcome reports whether the run has STALLED — reworked the same
+// code pass after pass without converging — and must halt fail-closed.
+type convergenceOutcome struct {
+	Stop   bool
+	Reason string // human-facing stop answer; set only when Stop
+}
+
+// observeMutatedFiles spends monotonic rework budget for the set of files a
+// single turn mutated (callers pass a deduped list, so a file edited twice in
+// one turn counts once). The first turn to touch a file is initial work; every
+// later turn that touches it again is one rework pass. It returns a terminal
+// STALLED stop when either the per-file or the aggregate rework cap is reached.
+func (state *guardState) observeMutatedFiles(files []string) convergenceOutcome {
+	if state.fileMutationTurns == nil {
+		state.fileMutationTurns = map[string]int{}
+	}
+	worstFile := ""
+	worstPasses := 0
+	for _, file := range files {
+		if file == "" {
+			continue
+		}
+		priorTurns := state.fileMutationTurns[file]
+		state.fileMutationTurns[file] = priorTurns + 1
+		if priorTurns == 0 {
+			continue // first turn to touch this file: initial work, not rework
+		}
+		state.totalReworkPasses++
+		if passes := state.fileMutationTurns[file] - 1; passes > worstPasses {
+			worstPasses = passes
+			worstFile = file
+		}
+	}
+	if worstFile != "" && worstPasses >= maxFileReworkPasses {
+		return convergenceOutcome{Stop: true, Reason: stalledFileReason(worstFile, worstPasses)}
+	}
+	if state.totalReworkPasses >= maxTotalReworkPasses {
+		return convergenceOutcome{Stop: true, Reason: stalledTotalReason(state.totalReworkPasses)}
+	}
+	return convergenceOutcome{}
 }
 
 // observeTurn updates counters from a turn's collected stream. It returns

@@ -639,6 +639,9 @@ func Run(ctx context.Context, prompt string, provider Provider, options Options)
 				continue
 			}
 			result.FinalAnswer = collected.Text
+			// Clean natural completion with the rework budget intact: the SETTLED
+			// terminal state (the counterpart to a STALLED convergence halt).
+			result.StopReason = StopReasonSettled
 			result.Messages = copyMessages(messages)
 			return result, nil
 		}
@@ -791,6 +794,22 @@ func Run(ctx context.Context, prompt string, provider Provider, options Options)
 					Role:    zeroruntime.MessageRoleUser,
 					Content: feedback,
 				})
+			}
+		}
+
+		// Convergence guard: spend monotonic rework budget for the files this turn
+		// touched. When a file — or the codebase in aggregate — has been reworked
+		// pass after pass without converging, the run has STALLED: halt fail-closed
+		// with an escalate-to-human answer rather than looping the "re-fix what was
+		// already fixed" churn that never terminates on its own. Placed after every
+		// tool_result and any self-correct feedback are recorded, so the message
+		// history stays valid for a strict provider replay.
+		if len(changedFilesThisBatch) > 0 {
+			if outcome := guards.observeMutatedFiles(dedupeStrings(changedFilesThisBatch)); outcome.Stop {
+				result.FinalAnswer = outcome.Reason
+				result.StopReason = StopReasonStalled
+				result.Messages = copyMessages(messages)
+				return result, nil
 			}
 		}
 

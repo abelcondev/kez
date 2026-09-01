@@ -2,6 +2,7 @@ package agent
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -517,5 +518,88 @@ func TestRunInjectsToolFailureHintWithSchema(t *testing.T) {
 	}
 	if !found {
 		t.Fatalf("expected a tool-failure hint on the 3rd turn, messages: %+v", provider.requests[2].Messages)
+	}
+}
+
+// mutateTurns simulates a sequence of turns by feeding each turn's deduped
+// changed-file set to the convergence guard, returning the first STALLED outcome
+// (or a zero outcome if the run converged within the given turns).
+func mutateTurns(state *guardState, turns [][]string) convergenceOutcome {
+	for _, files := range turns {
+		if outcome := state.observeMutatedFiles(files); outcome.Stop {
+			return outcome
+		}
+	}
+	return convergenceOutcome{}
+}
+
+func TestConvergenceGuardTripsOnPerFileRework(t *testing.T) {
+	state := newGuardState()
+	// One file touched in maxFileReworkPasses+1 separate turns: turn 1 is initial
+	// work, the next maxFileReworkPasses turns are rework passes → STALLED.
+	turns := make([][]string, 0, maxFileReworkPasses+1)
+	for i := 0; i <= maxFileReworkPasses; i++ {
+		turns = append(turns, []string{"a.go"})
+	}
+	outcome := mutateTurns(state, turns)
+	if !outcome.Stop {
+		t.Fatalf("expected STALLED after %d rework passes on one file, got no stop", maxFileReworkPasses)
+	}
+	if !IsStalledStop(outcome.Reason) {
+		t.Errorf("stop reason should classify as stalled, got %q", outcome.Reason)
+	}
+	if !strings.Contains(outcome.Reason, "a.go") {
+		t.Errorf("per-file stop reason should name the file, got %q", outcome.Reason)
+	}
+}
+
+func TestConvergenceGuardTripsOnAggregateRework(t *testing.T) {
+	state := newGuardState()
+	// Spread rework thin so no single file hits the per-file cap: each file is
+	// touched twice (1 initial + 1 rework pass). maxTotalReworkPasses files each
+	// contributing one rework pass reaches the aggregate cap.
+	turns := [][]string{}
+	for i := 0; i < maxTotalReworkPasses; i++ {
+		file := "f" + strconv.Itoa(i) + ".go"
+		turns = append(turns, []string{file}, []string{file}) // initial + one rework
+	}
+	outcome := mutateTurns(state, turns)
+	if !outcome.Stop {
+		t.Fatalf("expected STALLED after %d aggregate rework passes, got no stop", maxTotalReworkPasses)
+	}
+	if !IsStalledStop(outcome.Reason) {
+		t.Errorf("stop reason should classify as stalled, got %q", outcome.Reason)
+	}
+}
+
+func TestConvergenceGuardAllowsLegitimateMultiStepWork(t *testing.T) {
+	state := newGuardState()
+	// A realistic task: write a module, add its test, fix one failure. The module
+	// is touched 3 times (2 rework passes) and the test twice (1 rework pass) —
+	// under both caps, so the run must NOT stall.
+	turns := [][]string{
+		{"mod.go"},
+		{"mod_test.go"},
+		{"mod.go", "mod_test.go"},
+		{"mod.go"},
+	}
+	if outcome := mutateTurns(state, turns); outcome.Stop {
+		t.Fatalf("legitimate multi-step work must not stall, got: %q", outcome.Reason)
+	}
+}
+
+func TestConvergenceGuardIsMonotonic(t *testing.T) {
+	state := newGuardState()
+	// Re-touching the same file in one turn (deduped by the caller) counts once,
+	// and there is no API to reset the budget: it only ever grows. Feeding the same
+	// file across turns must monotonically approach the cap without any reset.
+	before := state.totalReworkPasses
+	state.observeMutatedFiles([]string{"x.go"}) // initial, no rework
+	if state.totalReworkPasses != before {
+		t.Fatalf("first touch must not spend rework budget, got %d", state.totalReworkPasses)
+	}
+	state.observeMutatedFiles([]string{"x.go"}) // one rework pass
+	if state.totalReworkPasses != before+1 {
+		t.Fatalf("second touch must spend exactly one rework pass, got %d", state.totalReworkPasses)
 	}
 }
